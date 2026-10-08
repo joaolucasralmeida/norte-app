@@ -1,18 +1,23 @@
 /**
  * Service worker: faz o app abrir sem internet.
  *
- * Estratégia deliberadamente simples:
- * · os arquivos do app (HTML, CSS, JS, ícones) vêm do cache primeiro —
- *   é o que faz o ícone da tela de início abrir instantâneo e offline;
- * · qualquer outra coisa (as chamadas ao assistente) vai direto para a rede e
- *   nunca é cacheada.
+ * Duas estratégias, por um motivo concreto:
+ *
+ * · **Rede primeiro** para o HTML e o manifest. Foi aqui que doeu: com cache
+ *   primeiro, uma versão antiga do `index.html` continuava sendo servida
+ *   depois de publicar uma correção — e o iOS lia dela os links de ícone
+ *   velhos ao adicionar o app à tela de início. Agora a página sempre tenta
+ *   a rede antes, e só cai no cache quando está offline.
+ *
+ * · **Cache primeiro** para CSS, JS e imagens, que têm nome versionado e não
+ *   mudam sem trocar de URL. É o que faz o app abrir instantâneo.
  *
  * Os **dados** do usuário não passam por aqui: eles vivem no IndexedDB.
  */
 
 // Incremente a cada publicação: é o que descarta o cache antigo nos
 // aparelhos que já instalaram o app.
-const VERSION = 'norte-v3';
+const VERSION = 'norte-v4';
 
 const SHELL = [
   './',
@@ -35,13 +40,13 @@ const SHELL = [
   './js/screens/settings.js',
   './js/screens/chat.js',
   './favicon.ico',
-  './icons/icon-32.png',
-  './icons/icon-120.png',
-  './icons/icon-152.png',
-  './icons/icon-167.png',
-  './icons/icon-180.png',
-  './icons/icon-192.png',
-  './icons/icon-512.png',
+  './icons/norte-32-v3.png',
+  './icons/norte-120-v3.png',
+  './icons/norte-152-v3.png',
+  './icons/norte-167-v3.png',
+  './icons/norte-180-v3.png',
+  './icons/norte-192-v3.png',
+  './icons/norte-512-v3.png',
 ];
 
 self.addEventListener('install', (event) => {
@@ -62,6 +67,14 @@ self.addEventListener('activate', (event) => {
   );
 });
 
+/** HTML e manifest: a versão publicada vale mais que a guardada. */
+function isDocument(request, url) {
+  return request.mode === 'navigate'
+    || url.pathname.endsWith('/')
+    || url.pathname.endsWith('.html')
+    || url.pathname.endsWith('.webmanifest');
+}
+
 self.addEventListener('fetch', (event) => {
   const { request } = event;
   if (request.method !== 'GET') return;
@@ -70,25 +83,46 @@ self.addEventListener('fetch', (event) => {
   // Só servimos do cache o que é nosso e da mesma origem.
   if (url.origin !== location.origin) return;
 
-  event.respondWith(
-    caches.match(request).then((cached) => {
-      if (cached) {
-        // Atualiza em segundo plano para a próxima abertura já ter o novo.
-        event.waitUntil(refresh(request));
-        return cached;
-      }
-      return fetch(request)
-        .then((response) => {
-          if (response.ok) {
-            const copy = response.clone();
-            event.waitUntil(caches.open(VERSION).then((cache) => cache.put(request, copy)));
-          }
-          return response;
-        })
-        .catch(() => caches.match('./index.html'));
-    }),
-  );
+  if (isDocument(request, url)) {
+    event.respondWith(networkFirst(request));
+    return;
+  }
+  event.respondWith(cacheFirst(event, request));
 });
+
+async function networkFirst(request) {
+  try {
+    const response = await fetch(request, { cache: 'no-cache' });
+    if (response.ok) {
+      const copy = response.clone();
+      const cache = await caches.open(VERSION);
+      await cache.put(request, copy);
+    }
+    return response;
+  } catch {
+    // Offline: devolve o que tiver guardado.
+    return (await caches.match(request)) ?? (await caches.match('./index.html'));
+  }
+}
+
+async function cacheFirst(event, request) {
+  const cached = await caches.match(request);
+  if (cached) {
+    // Atualiza em segundo plano para a próxima abertura já ter o novo.
+    event.waitUntil(refresh(request));
+    return cached;
+  }
+  try {
+    const response = await fetch(request);
+    if (response.ok) {
+      const copy = response.clone();
+      event.waitUntil(caches.open(VERSION).then((cache) => cache.put(request, copy)));
+    }
+    return response;
+  } catch {
+    return caches.match('./index.html');
+  }
+}
 
 async function refresh(request) {
   try {
