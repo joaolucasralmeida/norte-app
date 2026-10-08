@@ -16,8 +16,23 @@
 <meta name="theme-color" content="#2563EB">
 
 <link rel="manifest" href="manifest.webmanifest">
-<link rel="apple-touch-icon" href="icons/icon-180.png">
-<link rel="icon" href="icons/icon-192.png">
+
+<!--
+  Ícone da tela de início (iOS).
+  Três detalhes que decidem se o ícone aparece ou se vem um quadrado em branco:
+  · PNG **sem canal alfa** — o iOS compõe transparência como preto e, em
+    algumas versões, simplesmente ignora o ícone;
+  · um `sizes` para cada tamanho que o iOS procura, em vez de um só genérico;
+  · `-precomposed` como rede de segurança para versões antigas.
+  O iOS guarda o ícone no momento em que você adiciona à tela: trocar o
+  arquivo não atualiza um ícone já criado — é preciso apagar e adicionar de novo.
+-->
+<link rel="apple-touch-icon" sizes="180x180" href="icons/icon-180.png">
+<link rel="apple-touch-icon" sizes="167x167" href="icons/icon-167.png">
+<link rel="apple-touch-icon" sizes="152x152" href="icons/icon-152.png">
+<link rel="apple-touch-icon" sizes="120x120" href="icons/icon-120.png">
+<link rel="apple-touch-icon-precomposed" href="icons/icon-180.png">
+<link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png">
 <link rel="stylesheet" href="css/app.css">
 </head>
 <body>

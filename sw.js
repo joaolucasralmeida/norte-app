@@ -10,7 +10,9 @@
  * Os **dados** do usuário não passam por aqui: eles vivem no IndexedDB.
  */
 
-const VERSION = 'norte-v1';
+// Incremente a cada publicação: é o que descarta o cache antigo nos
+// aparelhos que já instalaram o app.
+const VERSION = 'norte-v2';
 const SHELL = [
   './',
   './index.html',
@@ -31,6 +33,9 @@ const SHELL = [
   './js/screens/calendar.js',
   './js/screens/settings.js',
   './js/screens/chat.js',
+  './icons/icon-120.png',
+  './icons/icon-152.png',
+  './icons/icon-167.png',
   './icons/icon-180.png',
   './icons/icon-192.png',
   './icons/icon-512.png',
