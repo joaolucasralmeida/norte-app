@@ -38,6 +38,20 @@ export function openDB() {
   if (dbPromise) return dbPromise;
 
   dbPromise = new Promise((resolve, reject) => {
+    // O IndexedDB pode simplesmente não responder: basta um pedido de
+    // exclusão ou de upgrade pendente em outra aba para a abertura ficar
+    // esperando para sempre, sem erro e sem `onblocked`. Sem este limite, o
+    // app fica com a tela em branco e nenhuma pista do motivo.
+    const limite = setTimeout(() => {
+      dbPromise = null;
+      reject(new Error(
+        'O banco de dados não respondeu. Isso costuma acontecer quando o app '
+        + 'está aberto em outra aba. Feche as demais e tente de novo.',
+      ));
+    }, 8000);
+
+    const concluir = (fn) => (...args) => { clearTimeout(limite); fn(...args); };
+
     const request = indexedDB.open(DB_NAME, DB_VERSION);
 
     request.onupgradeneeded = () => {
@@ -49,7 +63,7 @@ export function openDB() {
       }
     };
 
-    request.onsuccess = () => {
+    request.onsuccess = concluir(() => {
       const db = request.result;
 
       // Quando uma aba nova precisar subir a versão do banco, esta conexão
@@ -62,14 +76,14 @@ export function openDB() {
       };
 
       resolve(db);
-    };
+    });
 
-    request.onerror = () => reject(request.error);
+    request.onerror = concluir(() => reject(request.error));
 
-    request.onblocked = () => reject(new Error(
+    request.onblocked = concluir(() => reject(new Error(
       'O banco está aberto em outra aba com uma versão anterior do app. '
       + 'Feche as outras abas do Norte e recarregue esta.',
-    ));
+    )));
   });
 
   return dbPromise;
