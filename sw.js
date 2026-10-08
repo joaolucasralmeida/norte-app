@@ -1,18 +1,18 @@
-/**
+﻿/**
  * Service worker: faz o app abrir sem internet.
  *
- * Estratégia deliberadamente simples:
- * · os arquivos do app (HTML, CSS, JS, ícones) vêm do cache primeiro —
- *   é o que faz o ícone da tela de início abrir instantâneo e offline;
- * · qualquer outra coisa (as chamadas ao assistente) vai direto para a rede e
- *   nunca é cacheada.
+ * EstratÃ©gia deliberadamente simples:
+ * Â· os arquivos do app (HTML, CSS, JS, Ã­cones) vÃªm do cache primeiro â€”
+ *   Ã© o que faz o Ã­cone da tela de inÃ­cio abrir instantÃ¢neo e offline;
+ * Â· qualquer outra coisa (as chamadas ao assistente) vai direto para a rede e
+ *   nunca Ã© cacheada.
  *
- * Os **dados** do usuário não passam por aqui: eles vivem no IndexedDB.
+ * Os **dados** do usuÃ¡rio nÃ£o passam por aqui: eles vivem no IndexedDB.
  */
 
-// Incremente a cada publicação: é o que descarta o cache antigo nos
-// aparelhos que já instalaram o app.
-const VERSION = 'norte-v2';
+// Incremente a cada publicaÃ§Ã£o: Ã© o que descarta o cache antigo nos
+// aparelhos que jÃ¡ instalaram o app.
+const VERSION = 'norte-v3';
 const SHELL = [
   './',
   './index.html',
@@ -33,6 +33,8 @@ const SHELL = [
   './js/screens/calendar.js',
   './js/screens/settings.js',
   './js/screens/chat.js',
+  './favicon.ico',
+  './icons/icon-32.png',
   './icons/icon-120.png',
   './icons/icon-152.png',
   './icons/icon-167.png',
@@ -44,8 +46,8 @@ const SHELL = [
 self.addEventListener('install', (event) => {
   event.waitUntil(
     caches.open(VERSION)
-      // `addAll` falha inteiro se um arquivo faltar; individual é mais
-      // tolerante e evita um app que não instala por causa de um ícone.
+      // `addAll` falha inteiro se um arquivo faltar; individual Ã© mais
+      // tolerante e evita um app que nÃ£o instala por causa de um Ã­cone.
       .then((cache) => Promise.allSettled(SHELL.map((url) => cache.add(url))))
       .then(() => self.skipWaiting()),
   );
@@ -64,13 +66,13 @@ self.addEventListener('fetch', (event) => {
   if (request.method !== 'GET') return;
 
   const url = new URL(request.url);
-  // Só servimos do cache o que é nosso e da mesma origem.
+  // SÃ³ servimos do cache o que Ã© nosso e da mesma origem.
   if (url.origin !== location.origin) return;
 
   event.respondWith(
     caches.match(request).then((cached) => {
       if (cached) {
-        // Atualiza em segundo plano para a próxima abertura já ter o novo.
+        // Atualiza em segundo plano para a prÃ³xima abertura jÃ¡ ter o novo.
         event.waitUntil(refresh(request));
         return cached;
       }
@@ -94,6 +96,6 @@ async function refresh(request) {
     const cache = await caches.open(VERSION);
     await cache.put(request, response);
   } catch {
-    // Offline: o cache já respondeu, não há nada a fazer.
+    // Offline: o cache jÃ¡ respondeu, nÃ£o hÃ¡ nada a fazer.
   }
 }
