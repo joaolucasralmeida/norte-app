@@ -162,6 +162,142 @@ function foldLine(line) {
   return parts;
 }
 
+// ---------------------------------------------------------------------------
+// Leitura de .ics
+// ---------------------------------------------------------------------------
+
+/**
+ * Lê um arquivo .ics e devolve os eventos futuros.
+ *
+ * É o único caminho para trazer o **calendário do iPhone** (iCloud) para
+ * dentro do app: não existe API web que leia o Calendário do iOS, mas o app
+ * Calendário exporta .ics, e o Outlook e o Google também.
+ *
+ * Deliberadamente tolerante: ignora o que não entende em vez de recusar o
+ * arquivo inteiro. Um .ics real vem cheio de campos de fuso, anexos e
+ * extensões proprietárias que não interessam aqui.
+ */
+export function parseICS(text, { days = 365, todayISO: hoje } = {}) {
+  const limite = new Date();
+  limite.setDate(limite.getDate() + days);
+  const limiteISO = toLocalISO(limite);
+  const hojeISO = hoje ?? toLocalISO(new Date());
+
+  const eventos = [];
+  let atual = null;
+
+  for (const linha of unfold(text)) {
+    if (linha === 'BEGIN:VEVENT') { atual = {}; continue; }
+
+    if (linha === 'END:VEVENT') {
+      const evento = finalizar(atual);
+      if (evento && evento.date >= hojeISO && evento.date <= limiteISO) eventos.push(evento);
+      atual = null;
+      continue;
+    }
+
+    if (!atual) continue;
+
+    const separador = linha.indexOf(':');
+    if (separador < 0) continue;
+
+    const bruto = linha.slice(0, separador);
+    const valor = linha.slice(separador + 1);
+    const nome = bruto.split(';')[0].toUpperCase();
+    const params = bruto.slice(nome.length);
+
+    switch (nome) {
+      case 'UID': atual.uid = valor; break;
+      case 'SUMMARY': atual.summary = unescapeText(valor); break;
+      case 'LOCATION': atual.location = unescapeText(valor); break;
+      case 'STATUS': atual.status = valor.toUpperCase(); break;
+      case 'DTSTART': Object.assign(atual, parseWhen(valor, params)); break;
+      default: break;
+    }
+  }
+
+  // Mesmo UID em ocorrências diferentes é normal em série recorrente;
+  // a chave real é UID + data.
+  const vistos = new Set();
+  return eventos.filter((evento) => {
+    const chave = `${evento.id}|${evento.date}`;
+    if (vistos.has(chave)) return false;
+    vistos.add(chave);
+    return true;
+  });
+}
+
+function finalizar(dados) {
+  if (!dados?.date) return null;
+  if (dados.status === 'CANCELLED') return null;
+
+  return {
+    id: `ics-${dados.uid ?? Math.random().toString(36).slice(2)}-${dados.date}`,
+    title: dados.summary || '(sem título)',
+    date: dados.date,
+    time: dados.time ?? null,
+    notes: dados.location ?? '',
+    kind: 'external',
+    source: 'ics',
+    done: false,
+    reminderMinutes: [],
+  };
+}
+
+/** `DTSTART;VALUE=DATE:20261110` ou `DTSTART:20261110T090000Z`. */
+function parseWhen(valor, params) {
+  const soData = /VALUE=DATE(?!-TIME)/i.test(params);
+  const texto = valor.trim();
+
+  const match = texto.match(/^(\d{4})(\d{2})(\d{2})(?:T(\d{2})(\d{2})(\d{2})(Z)?)?$/);
+  if (!match) return {};
+
+  const [, ano, mes, dia, hora, minuto, segundo, zulu] = match;
+
+  if (soData || !hora) return { date: `${ano}-${mes}-${dia}` };
+
+  // Horário em UTC precisa virar local, senão um evento das 21h aparece
+  // no dia seguinte.
+  if (zulu) {
+    const d = new Date(Date.UTC(+ano, +mes - 1, +dia, +hora, +minuto, +(segundo ?? 0)));
+    return {
+      date: toLocalISO(d),
+      time: `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`,
+    };
+  }
+
+  return { date: `${ano}-${mes}-${dia}`, time: `${hora}:${minuto}` };
+}
+
+/** Junta as linhas dobradas (continuação começa com espaço ou tab). */
+function unfold(text) {
+  const linhas = String(text).split(/\r\n|\n|\r/);
+  const saida = [];
+
+  for (const linha of linhas) {
+    if ((linha.startsWith(' ') || linha.startsWith('\t')) && saida.length > 0) {
+      saida[saida.length - 1] += linha.slice(1);
+    } else {
+      saida.push(linha);
+    }
+  }
+  return saida;
+}
+
+function unescapeText(valor) {
+  return String(valor)
+    .replace(/\\n/gi, '\n')
+    .replace(/\\,/g, ',')
+    .replace(/\\;/g, ';')
+    .replace(/\\\\/g, '\\');
+}
+
+function toLocalISO(date) {
+  const mes = String(date.getMonth() + 1).padStart(2, '0');
+  const dia = String(date.getDate()).padStart(2, '0');
+  return `${date.getFullYear()}-${mes}-${dia}`;
+}
+
 /**
  * Entrega o arquivo ao usuário.
  *

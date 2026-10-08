@@ -1,4 +1,9 @@
-import { state, setSetting, wipeEverything, saveAccount, deleteAccount } from '../store.js';
+import {
+  state, setSetting, wipeEverything, saveAccount, deleteAccount,
+  replaceExternalEvents, clearExternalEvents,
+} from '../store.js';
+import { requestToken, listCalendars, fetchAllEvents, hasValidToken, forgetToken } from '../google-calendar.js';
+import { parseICS } from '../ics.js';
 import { storageEstimate } from '../db.js';
 import { exportBackup, importBackup, backupStatus, dataSummary, backupReminderEvent } from '../backup.js';
 import { shareICS } from '../ics.js';
@@ -15,6 +20,7 @@ export function renderSettings() {
     el('h2', {}, 'Configurações'),
 
     backupCard(),
+    calendarsCard(),
     accountsCard(),
     assistantCard(),
     storageCard(),
@@ -96,6 +102,135 @@ function openImportSheet() {
       return true;
     },
   });
+}
+
+// ---------------------------------------------------------------------------
+// Agendas externas
+// ---------------------------------------------------------------------------
+
+function calendarsCard() {
+  const googleEvents = state.externalEvents.filter((e) => e.source === 'google').length;
+  const icsEvents = state.externalEvents.filter((e) => e.source === 'ics').length;
+  const clientId = state.settings.googleClientId ?? '';
+  const ultimaSync = state.settings.googleSyncedAt;
+
+  return card([
+    sectionTitle('Outras agendas'),
+    el('p', { class: 'caption' },
+      'Traga seus compromissos para a aba Calendário e veja tudo junto: parcelas, metas e a sua agenda.'),
+
+    // --- Google ---
+    el('div', { class: 'stack-xs' }, [
+      el('strong', {}, 'Google Calendar'),
+      googleEvents > 0
+        ? el('span', { class: 'caption positive' },
+            `${googleEvents} eventos${ultimaSync ? ` · atualizado em ${fmtDate(ultimaSync)}` : ''}`)
+        : el('span', { class: 'caption' }, 'Não conectado'),
+
+      field('Client ID do Google', input({
+        value: clientId, placeholder: '…apps.googleusercontent.com',
+        onChange: async (event) => { await setSetting('googleClientId', event.target.value.trim()); },
+      }), 'Criado por você no Google Cloud. É público — não é senha.'),
+
+      el('div', { class: 'actions' }, [
+        el('button', {
+          class: 'btn primary',
+          disabled: !clientId,
+          onClick: () => conectarGoogle(),
+        }, googleEvents > 0 ? 'Atualizar agora' : 'Conectar'),
+
+        googleEvents > 0
+          ? el('button', {
+              class: 'btn danger',
+              onClick: async () => {
+                await clearExternalEvents('google');
+                await setSetting('googleSyncedAt', null);
+                forgetToken();
+                toast('Google desconectado.');
+                rerender();
+              },
+            }, 'Desconectar')
+          : null,
+      ]),
+    ]),
+
+    el('hr'),
+
+    // --- Arquivo .ics ---
+    el('div', { class: 'stack-xs' }, [
+      el('strong', {}, 'Arquivo de calendário (.ics)'),
+      el('p', { class: 'caption' },
+        'É o único jeito de trazer o calendário do próprio iPhone (iCloud) — ' +
+        'não existe API web que leia o app Calendário. Serve também para Outlook e Google.'),
+      icsEvents > 0
+        ? el('span', { class: 'caption positive' }, `${icsEvents} eventos importados`)
+        : null,
+
+      field('Escolher arquivo', input({
+        type: 'file', accept: '.ics,text/calendar',
+        onChange: (event) => importarICS(event.target.files?.[0]),
+      })),
+
+      icsEvents > 0
+        ? el('button', {
+            class: 'btn danger',
+            onClick: async () => {
+              await clearExternalEvents('ics');
+              toast('Eventos importados removidos.');
+              rerender();
+            },
+          }, 'Remover eventos importados')
+        : null,
+    ]),
+
+    el('p', { class: 'caption tiny' },
+      'Agendas externas entram só para leitura: o Norte mostra os eventos e nunca altera nada na origem. ' +
+      'Elas também ficam de fora da exportação, para não duplicar o que já está no seu Calendário.'),
+  ]);
+}
+
+async function conectarGoogle() {
+  const clientId = state.settings.googleClientId;
+  if (!clientId) return;
+
+  toast('Abrindo autorização do Google…');
+
+  try {
+    const token = await requestToken(clientId, { interactive: !hasValidToken() });
+    const agendas = await listCalendars(token);
+    const selecionadas = agendas.filter((c) => c.selected).map((c) => c.id);
+
+    const { events, failures } = await fetchAllEvents(token, selecionadas, { days: 120 });
+    const total = await replaceExternalEvents('google', events);
+    await setSetting('googleSyncedAt', new Date().toISOString());
+
+    toast(failures.length
+      ? `${total} eventos importados, ${failures.length} agenda(s) falharam.`
+      : `${total} eventos de ${selecionadas.length} agenda(s).`);
+    rerender();
+  } catch (error) {
+    toast(error.message ?? 'Não consegui conectar ao Google.', 'error');
+  }
+}
+
+async function importarICS(file) {
+  if (!file) return;
+
+  try {
+    const texto = await file.text();
+    const eventos = parseICS(texto);
+
+    if (eventos.length === 0) {
+      toast('Nenhum evento futuro encontrado nesse arquivo.', 'error');
+      return;
+    }
+
+    await replaceExternalEvents('ics', eventos);
+    toast(`${eventos.length} eventos importados.`);
+    rerender();
+  } catch (error) {
+    toast('Não consegui ler esse arquivo .ics.', 'error');
+  }
 }
 
 // ---------------------------------------------------------------------------

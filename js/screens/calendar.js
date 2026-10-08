@@ -25,7 +25,7 @@ export function renderCalendar() {
 }
 
 function allEvents() {
-  return derivedEvents(state.transactions, state.goals, state.events);
+  return derivedEvents(state.transactions, state.goals, state.events, state.externalEvents);
 }
 
 function filters() {
@@ -159,7 +159,11 @@ function reminderLabel(minutes) {
 // ---------------------------------------------------------------------------
 
 function exportCard() {
-  const upcoming = allEvents().filter((event) => !event.done && event.date >= todayISO());
+  // Eventos vindos de fora ficam de fora da exportação: devolvê-los ao
+  // Calendário criaria uma cópia de algo que já está lá.
+  const upcoming = allEvents().filter(
+    (event) => !event.done && event.date >= todayISO() && event.kind !== 'external',
+  );
 
   return card([
     sectionTitle('Avisos no seu celular'),

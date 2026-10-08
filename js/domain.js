@@ -188,7 +188,7 @@ export function requiredMonthly(goal, contributions, todayIso = todayISO()) {
  * parcelas não pagas mais os eventos manuais, o que elimina de uma vez toda a
  * classe de bug de "evento duplicado" e de sincronização.
  */
-export function derivedEvents(transactions, goals, manualEvents = []) {
+export function derivedEvents(transactions, goals, manualEvents = [], externalEvents = []) {
   const fromInstallments = transactions
     .filter((tx) => tx.kind === 'expense' && tx.installmentCount > 1)
     .map((tx) => ({
@@ -239,8 +239,11 @@ export function derivedEvents(transactions, goals, manualEvents = []) {
     reminderMinutes: event.reminderMinutes ?? [-60],
   }));
 
-  return [...fromInstallments, ...fromBills, ...fromGoals, ...manual]
-    .sort((a, b) => a.date.localeCompare(b.date));
+  // Vêm prontos de google-calendar.js ou do parser de .ics.
+  const externos = externalEvents.map((event) => ({ ...event, kind: 'external' }));
+
+  return [...fromInstallments, ...fromBills, ...fromGoals, ...manual, ...externos]
+    .sort((a, b) => a.date.localeCompare(b.date) || (a.time ?? '').localeCompare(b.time ?? ''));
 }
 
 export const EVENT_KINDS = {
@@ -248,4 +251,5 @@ export const EVENT_KINDS = {
   bill: { label: 'Conta a pagar', color: '#F59E0B' },
   goal_deadline: { label: 'Prazo de meta', color: '#8B5CF6' },
   manual: { label: 'Pessoal', color: '#6B7280' },
+  external: { label: 'Agenda', color: '#0EA5E9' },
 };

@@ -13,7 +13,9 @@
  */
 
 const DB_NAME = 'norte';
-const DB_VERSION = 1;
+// v2 acrescentou `externalEvents` (agendas importadas). Subir a versão é o
+// que dispara a criação do store novo em quem já tinha o app instalado.
+const DB_VERSION = 2;
 
 /** Cada coleção vira um object store com chave `id`. */
 export const STORES = [
@@ -25,6 +27,7 @@ export const STORES = [
   'contributions',
   'notes',
   'events',
+  'externalEvents',
   'quotes',
   'meta',
 ];

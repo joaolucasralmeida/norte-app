@@ -20,6 +20,8 @@ export const state = {
   contributions: [],
   notes: [],
   events: [],
+  /** Eventos vindos de agendas externas (Google ao vivo, ou .ics importado). */
+  externalEvents: [],
   quotes: [],
   settings: {},
   storage: { supported: false, persisted: false },
@@ -51,6 +53,7 @@ export async function load() {
   state.contributions = data.contributions ?? [];
   state.notes = data.notes ?? [];
   state.events = data.events ?? [];
+  state.externalEvents = data.externalEvents ?? [];
   state.quotes = data.quotes ?? [];
   state.settings = Object.fromEntries((data.meta ?? []).map((m) => [m.key, m.value]));
 
@@ -414,6 +417,41 @@ export async function deleteEvent(id) {
 }
 
 // ---------------------------------------------------------------------------
+// Agendas externas
+// ---------------------------------------------------------------------------
+
+/**
+ * Substitui os eventos de uma origem (`google` ou `ics`).
+ *
+ * Substituir em vez de mesclar é proposital: se um compromisso foi apagado
+ * ou movido na agenda de origem, mesclar o deixaria preso aqui para sempre.
+ * A origem manda — este app só espelha.
+ */
+export async function replaceExternalEvents(source, events) {
+  const antigos = state.externalEvents.filter((e) => e.source === source).map((e) => e.id);
+  await db.removeMany('externalEvents', antigos);
+
+  const novos = events.map((event) => ({ ...event, source, syncedAt: new Date().toISOString() }));
+  await db.putMany('externalEvents', novos);
+
+  state.externalEvents = [
+    ...state.externalEvents.filter((e) => e.source !== source),
+    ...novos,
+  ];
+  emit();
+  return novos.length;
+}
+
+export async function clearExternalEvents(source) {
+  const alvo = state.externalEvents.filter((e) => !source || e.source === source).map((e) => e.id);
+  await db.removeMany('externalEvents', alvo);
+  state.externalEvents = source
+    ? state.externalEvents.filter((e) => e.source !== source)
+    : [];
+  emit();
+}
+
+// ---------------------------------------------------------------------------
 // Cotações do assistente
 // ---------------------------------------------------------------------------
 
@@ -436,7 +474,7 @@ function upsert(collection, record) {
 export async function wipeEverything() {
   await db.clearAll();
   for (const key of ['accounts', 'categories', 'transactions', 'plans', 'goals',
-                     'contributions', 'notes', 'events', 'quotes']) {
+                     'contributions', 'notes', 'events', 'externalEvents', 'quotes']) {
     state[key] = [];
   }
   state.settings = {};
