@@ -49,9 +49,27 @@ export function openDB() {
       }
     };
 
-    request.onsuccess = () => resolve(request.result);
+    request.onsuccess = () => {
+      const db = request.result;
+
+      // Quando uma aba nova precisar subir a versão do banco, esta conexão
+      // precisa sair da frente sozinha — senão a outra aba trava esperando.
+      // Sem isto, abrir o app no Safari e pelo ícone ao mesmo tempo, numa
+      // atualização que muda o schema, deixa um dos dois sem funcionar.
+      db.onversionchange = () => {
+        db.close();
+        dbPromise = null;
+      };
+
+      resolve(db);
+    };
+
     request.onerror = () => reject(request.error);
-    request.onblocked = () => reject(new Error('Banco bloqueado por outra aba aberta.'));
+
+    request.onblocked = () => reject(new Error(
+      'O banco está aberto em outra aba com uma versão anterior do app. '
+      + 'Feche as outras abas do Norte e recarregue esta.',
+    ));
   });
 
   return dbPromise;

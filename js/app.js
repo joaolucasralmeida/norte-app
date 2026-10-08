@@ -115,7 +115,9 @@ async function boot() {
         el('h3', {}, 'Não consegui abrir seus dados'),
         el('p', {}, error.message),
         el('p', { class: 'caption' },
-          'Se você estiver em uma aba privada do Safari, o armazenamento fica bloqueado. Tente em uma aba normal.'),
+          'Em aba privada do Safari o armazenamento fica bloqueado — tente em uma aba normal. '
+          + 'Se o app estiver aberto em outro lugar ao mesmo tempo, feche e recarregue aqui.'),
+        el('button', { class: 'btn primary', onClick: () => location.reload() }, 'Tentar de novo'),
       ]),
     );
     return;
