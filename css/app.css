@@ -493,3 +493,25 @@ hr { border: 0; border-top: 1px solid var(--divider); margin: 4px 0; }
 @media (prefers-color-scheme: dark) {
   .toast { background: #E5E7EB; color: #111827; }
 }
+
+/* ------------------------------------------------------------------ entrada */
+/* A tela de login some junto com as abas e o topo: deixar a navegação
+   visível permitiria trocar o hash e chegar numa tela do app antes de
+   entrar — sem dado nenhum, mas com aparência de defeito. */
+body.deslogado .tabbar,
+body.deslogado .topbar-actions { display: none; }
+body.deslogado #screen-title { visibility: hidden; }
+
+.auth { max-width: 380px; margin: 0 auto; padding: 24px 0 48px; }
+.auth-marca { display: flex; flex-direction: column; align-items: center; gap: 8px; margin-bottom: 24px; }
+.auth-marca img { border-radius: 14px; }
+.auth-marca h1 { font-size: 24px; margin: 0; }
+.auth .card { display: flex; flex-direction: column; gap: 14px; }
+
+.btn.wide { width: 100%; justify-content: center; }
+
+/* Linha de sincronização em Configurações. */
+.sync-linha { display: flex; align-items: center; gap: 8px; }
+.sync-ponto { width: 8px; height: 8px; border-radius: 50%; background: var(--positive); flex: none; }
+.sync-ponto.pendente { background: var(--accent); }
+.sync-ponto.offline { background: var(--text-muted); }

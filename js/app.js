@@ -8,6 +8,10 @@
 
 import { load, subscribe, state } from './store.js';
 import { el, clear, initSheet, toast } from './ui.js';
+import { cloudConfigured } from './cloud/config.js';
+import { currentSession, onAuthChange } from './cloud/client.js';
+import { sincronizar } from './cloud/sync.js';
+import { renderAuth, chegouPorLinkDeSenha, sessaoDoLink } from './screens/auth.js';
 import { renderDashboard } from './screens/dashboard.js';
 import { renderFinance } from './screens/finance.js';
 import { renderGoals } from './screens/goals.js';
@@ -103,9 +107,74 @@ function maybeSuggestInstall() {
   }, 1500);
 }
 
+/**
+ * Mostra só a tela de entrada, sem as abas nem os botões do topo.
+ *
+ * Esconder a navegação não é enfeite: com ela visível, dá para trocar o hash
+ * da URL e chegar numa tela do app antes de entrar. Ela não mostraria dado
+ * nenhum — o IndexedDB está vazio e o servidor recusa sem sessão —, mas
+ * exibiria uma interface quebrada que parece erro.
+ */
+function mostrarEntrada(modo) {
+  document.body.classList.add('deslogado');
+  const screen = document.getElementById('screen');
+  clear(screen).append(renderAuth({ modo, onEntrou: iniciarSessao }));
+}
+
+/** Depois de entrar: carrega os dados, sincroniza e entrega o app. */
+async function iniciarSessao() {
+  document.body.classList.remove('deslogado');
+  history.replaceState(null, '', location.pathname + location.search + '#/inicio');
+
+  await load();
+  subscribe(() => render());
+  render();
+
+  sincronizarEmSegundoPlano();
+  window.addEventListener('online', sincronizarEmSegundoPlano);
+}
+
+/**
+ * A sincronização nunca bloqueia a tela.
+ *
+ * O app já tem os dados locais; esperar a rede para desenhar transformaria
+ * uma abertura instantânea numa espera de alguns segundos, e uma falha de
+ * rede numa tela de erro — para dados que estão aqui do lado.
+ */
+async function sincronizarEmSegundoPlano() {
+  if (!cloudConfigured() || !navigator.onLine) return;
+  try {
+    const { recebidos = 0 } = await sincronizar();
+    if (recebidos > 0) {
+      await load();
+      render();
+    }
+  } catch (error) {
+    console.warn('Sincronização falhou:', error.message);
+  }
+}
+
 async function boot() {
   initSheet();
   wireChrome();
+
+  if (cloudConfigured()) {
+    // O link do convite traz a pessoa já autenticada, com uma sessão de uso
+    // único: o que falta é escolher a senha, não entrar.
+    if (chegouPorLinkDeSenha()) {
+      await sessaoDoLink();
+      mostrarEntrada('definir');
+      registerServiceWorker();
+      return;
+    }
+    if (!(await currentSession())) {
+      mostrarEntrada('entrar');
+      registerServiceWorker();
+      onAuthChange((evento) => { if (evento === 'SIGNED_OUT') location.reload(); });
+      return;
+    }
+    onAuthChange((evento) => { if (evento === 'SIGNED_OUT') location.reload(); });
+  }
 
   try {
     await load();
@@ -128,6 +197,9 @@ async function boot() {
 
   registerServiceWorker();
   maybeSuggestInstall();
+
+  sincronizarEmSegundoPlano();
+  window.addEventListener('online', sincronizarEmSegundoPlano);
 }
 
 boot();

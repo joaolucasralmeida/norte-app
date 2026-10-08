@@ -13,12 +13,16 @@ import {
   field, input, moneyInput, select, toggle, row,
 } from '../ui.js';
 import { load } from '../store.js';
+import { cloudConfigured } from '../cloud/config.js';
+import { currentSession, signOut } from '../cloud/client.js';
+import { sincronizar, pendencias, limparCopiaLocal } from '../cloud/sync.js';
 
 export function renderSettings() {
   return el('div', { class: 'stack' }, [
     el('button', { class: 'back-link', onClick: () => history.back() }, '‹ Voltar'),
     el('h2', {}, 'Configurações'),
 
+    accountCard(),
     backupCard(),
     calendarsCard(),
     accountsCard(),
@@ -306,6 +310,84 @@ function openAccountSheet(existing = null) {
 }
 
 // ---------------------------------------------------------------------------
+
+/**
+ * Conta e sincronização.
+ *
+ * Só aparece quando a sincronização está configurada — sem isso o app é o que
+ * sempre foi, um aplicativo de um aparelho só, e um cartão falando de conta
+ * seria mentira.
+ */
+function accountCard() {
+  if (!cloudConfigured()) return null;
+
+  const estado = el('span', { class: 'caption' }, 'verificando…');
+  const ponto = el('span', { class: 'sync-ponto' });
+  const quem = el('strong', {}, '—');
+
+  const atualizar = async () => {
+    const sessao = await currentSession();
+    quem.textContent = sessao?.user?.email ?? 'não conectado';
+
+    const fila = await pendencias();
+    if (!navigator.onLine) {
+      ponto.className = 'sync-ponto offline';
+      estado.textContent = fila
+        ? `Sem conexão · ${fila} alteração(ões) esperando para subir`
+        : 'Sem conexão · tudo que havia já subiu';
+      return;
+    }
+    ponto.className = fila ? 'sync-ponto pendente' : 'sync-ponto';
+    estado.textContent = fila ? `${fila} alteração(ões) para enviar` : 'Tudo sincronizado';
+  };
+
+  const agora = el('button', {
+    class: 'btn',
+    onClick: async () => {
+      agora.disabled = true;
+      agora.textContent = 'Sincronizando…';
+      try {
+        const { recebidos = 0, enviados = 0 } = await sincronizar();
+        toast(`Sincronizado: ${recebidos} recebido(s), ${enviados} enviado(s).`);
+        await load();
+      } catch (error) {
+        toast(`Falhou: ${error.message}`);
+      }
+      agora.disabled = false;
+      agora.textContent = 'Sincronizar agora';
+      atualizar();
+    },
+  }, 'Sincronizar agora');
+
+  const sair = el('button', {
+    class: 'btn danger',
+    onClick: async () => {
+      const fila = await pendencias();
+      const aviso = fila
+        ? `Há ${fila} alteração(ões) que ainda não subiram. Sair agora as descarta. Continuar?`
+        : 'Sair da conta? Os dados deste aparelho serão apagados — eles continuam no servidor.';
+      if (!(await confirmAction(aviso))) return;
+
+      // Apagar a cópia local é o ponto da coisa: num computador compartilhado,
+      // deixá-la significaria que o próximo a abrir o app veria tudo sem senha.
+      await limparCopiaLocal();
+      await signOut();
+      location.reload();
+    },
+  }, 'Sair da conta');
+
+  atualizar();
+
+  return card([
+    sectionTitle('Sua conta'),
+    quem,
+    el('div', { class: 'sync-linha' }, [ponto, estado]),
+    el('div', { class: 'actions' }, [agora, sair]),
+    el('p', { class: 'caption tiny' },
+      'Seus dados ficam neste aparelho e no servidor. Entrar com o mesmo e-mail em '
+      + 'outro computador traz tudo para lá.'),
+  ]);
+}
 
 function assistantCard() {
   const url = state.settings.backendURL ?? '';

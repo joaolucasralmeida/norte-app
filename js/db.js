@@ -13,9 +13,11 @@
  */
 
 const DB_NAME = 'norte';
-// v2 acrescentou `externalEvents` (agendas importadas). Subir a versão é o
-// que dispara a criação do store novo em quem já tinha o app instalado.
-const DB_VERSION = 2;
+// v2 acrescentou `externalEvents` (agendas importadas).
+// v3 acrescentou `outbox` (fila de sincronização com o Supabase).
+// Subir a versão é o que dispara a criação do store novo em quem já tinha o
+// app instalado.
+const DB_VERSION = 3;
 
 /** Cada coleção vira um object store com chave `id`. */
 export const STORES = [
@@ -30,6 +32,26 @@ export const STORES = [
   'externalEvents',
   'quotes',
   'meta',
+  'outbox',
+];
+
+/**
+ * Coleções que sobem para o Supabase.
+ *
+ * Ficam de fora: `externalEvents` (espelho de uma agenda de terceiros, que se
+ * refaz sozinho a cada sincronização), `quotes` (resquício da busca de preços
+ * antiga, hoje sem uso), `meta` (preferências, que sobem por outro caminho) e
+ * `outbox` (a própria fila).
+ */
+export const SYNCED_STORES = [
+  'accounts',
+  'categories',
+  'plans',
+  'goals',
+  'transactions',
+  'contributions',
+  'notes',
+  'events',
 ];
 
 let dbPromise = null;
@@ -58,7 +80,7 @@ export function openDB() {
       const db = request.result;
       for (const name of STORES) {
         if (db.objectStoreNames.contains(name)) continue;
-        const keyPath = name === 'meta' ? 'key' : 'id';
+        const keyPath = name === 'meta' || name === 'outbox' ? 'key' : 'id';
         db.createObjectStore(name, { keyPath });
       }
     };
@@ -114,37 +136,114 @@ export async function getAll(store) {
   return toPromise(transaction.objectStore(store).getAll());
 }
 
-export async function put(store, value) {
+/**
+ * Marca um registro como pendente de envio ao servidor.
+ *
+ * A fila fica aqui, dentro do `db.js`, e não em cada tela, por um motivo
+ * prático: existem dezenas de pontos que gravam dados, e bastaria esquecer
+ * um para aquele tipo de registro nunca sincronizar — uma falha silenciosa,
+ * que só apareceria quando faltasse justamente aquele dado no outro
+ * aparelho. Passando tudo por aqui, não há como esquecer.
+ *
+ * A exclusão precisa entrar na fila pelo mesmo motivo. Se o celular apaga um
+ * lançamento e o servidor nunca fica sabendo, a próxima sincronização traz o
+ * registro de volta — ele ressuscita.
+ *
+ * `silent` é usado pela própria sincronização ao aplicar o que veio do
+ * servidor: sem isso, receber uma mudança criaria uma pendência de reenvio
+ * dela mesma, em laço.
+ */
+function enfileirar(objectStore, store, id, op) {
+  objectStore.put({ key: `${store}:${id}`, store, id, op, at: new Date().toISOString() });
+}
+
+/** Stores envolvidos numa escrita — inclui a fila quando o registro sincroniza. */
+function alvos(store, silent) {
+  return !silent && SYNCED_STORES.includes(store) ? [store, 'outbox'] : [store];
+}
+
+export async function put(store, value, { silent = false } = {}) {
   const db = await openDB();
-  const { transaction, done } = tx(db, [store], 'readwrite');
+  const stores = alvos(store, silent);
+  const { transaction, done } = tx(db, stores, 'readwrite');
   transaction.objectStore(store).put(value);
+  if (stores.length > 1) enfileirar(transaction.objectStore('outbox'), store, value.id, 'upsert');
   await done;
   return value;
 }
 
 /** Grava vários registros em uma única transação — usado pelo parcelamento. */
-export async function putMany(store, values) {
+export async function putMany(store, values, { silent = false } = {}) {
   if (values.length === 0) return;
   const db = await openDB();
-  const { transaction, done } = tx(db, [store], 'readwrite');
+  const stores = alvos(store, silent);
+  const { transaction, done } = tx(db, stores, 'readwrite');
   const objectStore = transaction.objectStore(store);
-  for (const value of values) objectStore.put(value);
+  const fila = stores.length > 1 ? transaction.objectStore('outbox') : null;
+  for (const value of values) {
+    objectStore.put(value);
+    if (fila) enfileirar(fila, store, value.id, 'upsert');
+  }
   await done;
 }
 
-export async function remove(store, id) {
+export async function remove(store, id, { silent = false } = {}) {
   const db = await openDB();
-  const { transaction, done } = tx(db, [store], 'readwrite');
+  const stores = alvos(store, silent);
+  const { transaction, done } = tx(db, stores, 'readwrite');
   transaction.objectStore(store).delete(id);
+  if (stores.length > 1) enfileirar(transaction.objectStore('outbox'), store, id, 'delete');
   await done;
 }
 
-export async function removeMany(store, ids) {
+export async function removeMany(store, ids, { silent = false } = {}) {
   if (ids.length === 0) return;
   const db = await openDB();
-  const { transaction, done } = tx(db, [store], 'readwrite');
+  const stores = alvos(store, silent);
+  const { transaction, done } = tx(db, stores, 'readwrite');
   const objectStore = transaction.objectStore(store);
-  for (const id of ids) objectStore.delete(id);
+  const fila = stores.length > 1 ? transaction.objectStore('outbox') : null;
+  for (const id of ids) {
+    objectStore.delete(id);
+    if (fila) enfileirar(fila, store, id, 'delete');
+  }
+  await done;
+}
+
+// ---------------------------------------------------------------------------
+// Fila de sincronização
+// ---------------------------------------------------------------------------
+
+export async function outboxAll() {
+  return getAll('outbox');
+}
+
+export async function outboxClear(keys) {
+  if (keys.length === 0) return;
+  const db = await openDB();
+  const { transaction, done } = tx(db, ['outbox'], 'readwrite');
+  const objectStore = transaction.objectStore('outbox');
+  for (const key of keys) objectStore.delete(key);
+  await done;
+}
+
+/**
+ * Enfileira tudo o que já existe no aparelho.
+ *
+ * Roda uma vez, no primeiro login: os dados criados antes da sincronização
+ * existir nunca passaram pela fila e, sem isto, ficariam presos aqui para
+ * sempre enquanto o servidor seguisse vazio.
+ */
+export async function outboxSeedExisting() {
+  const db = await openDB();
+  const { transaction, done } = tx(db, [...SYNCED_STORES, 'outbox'], 'readwrite');
+  const fila = transaction.objectStore('outbox');
+
+  await Promise.all(SYNCED_STORES.map(async (store) => {
+    const registros = await toPromise(transaction.objectStore(store).getAll());
+    for (const registro of registros) enfileirar(fila, store, registro.id, 'upsert');
+  }));
+
   await done;
 }
 
