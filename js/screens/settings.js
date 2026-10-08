@@ -322,7 +322,7 @@ function assistantCard() {
         await setSetting('backendURL', event.target.value.trim());
         toast('Servidor salvo.');
       },
-    }), 'O backend em Node deste projeto, publicado em algum lugar com https.'),
+    }), 'O Worker em gemini-worker/ deste projeto, publicado no Cloudflare.'),
 
     toggle('Enviar resumo financeiro ao assistente',
       Boolean(state.settings.sendSnapshot),
@@ -334,6 +334,10 @@ function assistantCard() {
       '⚠ No nível gratuito do Gemini, o Google pode usar o que você envia para treinar os modelos dele. '
       + 'Perguntar preço de produto não revela nada seu; o resumo financeiro, sim. '
       + 'Com faturamento ativado no Google AI Studio, essa política não se aplica.'),
+
+    el('p', { class: 'caption tiny' },
+      'A pesquisa de preços usa a Tavily, limitada a 1.000 buscas por mês no plano gratuito. '
+      + 'Só o nome do produto é enviado a ela.'),
   ]);
 }
 
