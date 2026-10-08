@@ -1,18 +1,23 @@
 /**
  * Assistente de IA.
  *
- * Reaproveita o backend Node deste mesmo projeto (`backend/`), que já faz o
- * loop de ferramentas com a Claude API e a busca de preços. Aqui é só o
- * cliente de SSE e a interface.
+ * Conversa com o Worker em `gemini-worker/`, que faz o loop de ferramentas
+ * com o Gemini. Aqui é só o cliente de SSE e a interface.
  *
  * Sem servidor configurado, a tela explica o que falta em vez de dar erro —
  * o app inteiro continua funcionando offline, este é o único pedaço que
  * depende de rede.
+ *
+ * Já houve um cartão de preço aqui, com mediana, faixa e lista de ofertas,
+ * alimentado pela API pública do Mercado Livre. Ela foi fechada. O que o
+ * assistente consegue devolver hoje é texto com fontes citadas — e é isso
+ * que a tela mostra. Fingir a precisão do cartão antigo com dados que já não
+ * existem seria pior do que mostrar menos.
  */
 
-import { state, saveQuote, setSetting } from '../store.js';
-import { money, fmtCollectedAt, parseMoney } from '../format.js';
-import { el, card, openSheet, closeSheet, toast, field, input, progressBar } from '../ui.js';
+import { state, setSetting } from '../store.js';
+import { money, parseMoney } from '../format.js';
+import { el, card, openSheet, closeSheet, toast, field, input } from '../ui.js';
 import { openGoalSheet } from './goals.js';
 import { monthSummary, contributedCents, remainingCents } from '../domain.js';
 import { contributionsOf } from '../store.js';
@@ -38,7 +43,7 @@ function backendURL() {
 
 function buildComposer(log) {
   const textInput = input({
-    placeholder: 'Quanto custa um iPhone 15 128GB?',
+    placeholder: 'Quero juntar para um iPhone 15, uns R$ 3.800',
     onKeyDown: (event) => { if (event.key === 'Enter') send(); },
   });
 
@@ -62,7 +67,7 @@ function renderLog(log) {
     log.append(card([
       el('strong', {}, 'Assistente não configurado'),
       el('p', { class: 'caption' },
-        'O chat e a busca de preços precisam do servidor deste projeto publicado em algum lugar com https. ' +
+        'O chat precisa do servidor deste projeto publicado em algum lugar com https. ' +
         'Configure o endereço em Configurações › Assistente de IA.'),
       el('p', { class: 'caption tiny' },
         'Sem isso, todo o resto do app funciona normalmente e sem internet.'),
@@ -72,7 +77,7 @@ function renderLog(log) {
 
   if (messages.length === 0) {
     log.append(el('p', { class: 'caption center' },
-      'Pergunte um preço e eu preparo uma meta de compra para você confirmar.'));
+      'Diga o que você quer comprar e por quanto, que eu preparo uma meta para você confirmar.'));
     return;
   }
 
@@ -84,7 +89,8 @@ function bubbleFor(message, log) {
   if (message.type === 'text') {
     return el('div', { class: `bubble ${message.role}` }, message.text);
   }
-  if (message.type === 'price') return priceCard(message.result);
+  if (message.type === 'sources') return sourcesCard(message.payload);
+  if (message.type === 'status') return el('div', { class: 'bubble status' }, message.text);
   if (message.type === 'proposal') return proposalCard(message, log);
   if (message.type === 'error') {
     return el('div', { class: 'bubble error' }, [
@@ -95,40 +101,37 @@ function bubbleFor(message, log) {
 }
 
 /**
- * Card de preço: faixa, mediana, amostra, fontes e **horário da coleta**.
- * Preço sem data e sem fonte é preço enganoso — mesma regra do app nativo.
+ * De onde o assistente tirou o que disse.
+ *
+ * Fica logo abaixo da resposta porque preço sem origem visível é preço
+ * enganoso — a regra que sustentava o cartão antigo continua valendo, só
+ * mudou o que há para mostrar.
  */
-function priceCard(result) {
-  const position = result.max_price > result.min_price
-    ? (result.median_price - result.min_price) / (result.max_price - result.min_price)
-    : 0.5;
+function sourcesCard(payload) {
+  const links = payload.links ?? [];
+  const queries = payload.queries ?? [];
 
   return card([
-    el('div', { class: 'row' }, [
-      el('strong', {}, result.query),
-      el('span', { class: 'badge ok' }, `${result.sample_size} ofertas`),
-    ]),
+    el('span', { class: 'caption' }, 'FONTES CONSULTADAS'),
 
-    progressBar(position),
+    ...links.map((source) =>
+      el('a', {
+        href: source.url,
+        target: '_blank',
+        rel: 'noopener noreferrer',
+        class: 'link',
+      }, `${source.title} ↗`)),
 
-    el('div', { class: 'price-range' }, [
-      el('div', {}, [el('span', { class: 'caption' }, 'mín'), el('strong', {}, brl(result.min_price))]),
-      el('div', { class: 'center' }, [
-        el('span', { class: 'caption' }, 'mediana'),
-        el('strong', { class: 'big' }, brl(result.median_price)),
-      ]),
-      el('div', { class: 'right' }, [el('span', { class: 'caption' }, 'máx'), el('strong', {}, brl(result.max_price))]),
-    ]),
+    links.length === 0
+      ? el('span', { class: 'caption tiny' }, 'A busca não retornou links.')
+      : null,
 
-    el('div', { class: 'stack-xs' }, [
-      el('span', { class: 'caption' }, 'FONTES'),
-      ...(result.sources ?? []).map((source) =>
-        el('a', { href: source.url, target: '_blank', rel: 'noopener noreferrer', class: 'link' },
-          `${source.name} ↗`)),
-      el('span', { class: 'caption tiny' }, fmtCollectedAt(result.fetched_at)),
-    ]),
+    queries.length
+      ? el('span', { class: 'caption tiny' }, `Buscas: ${queries.join(' · ')}`)
+      : null,
 
-    el('p', { class: 'caption tiny' }, result.disclaimer ?? ''),
+    el('p', { class: 'caption tiny' },
+      'Valores estimados a partir de anúncios na web. Variam por vendedor, frete e região.'),
   ]);
 }
 
@@ -176,14 +179,14 @@ function proposalCard(message, log) {
       el('button', {
         class: 'btn',
         onClick: () => {
-          const offers = message.offers ?? [];
-          messages.push({
-            type: 'text', role: 'assistant',
-            text: offers.length
-              ? 'Ofertas consideradas:\n' + offers.slice(0, 5)
-                  .map((o) => `• ${o.seller}: ${brl(o.price)}`).join('\n')
-              : 'Não guardei o detalhe das ofertas desta consulta.',
-          });
+          const links = message.sources?.links ?? [];
+          messages.push(links.length
+            ? { type: 'sources', payload: message.sources }
+            : {
+                type: 'text', role: 'assistant',
+                text: 'Este valor não veio de uma pesquisa — foi o que você informou. '
+                  + 'Você pode ajustá-lo no formulário da meta.',
+              });
           renderLog(log);
         },
       }, 'Mais detalhes'),
@@ -211,7 +214,8 @@ async function ask(text, log) {
     .filter((m) => m.type === 'text')
     .map((m) => ({ role: m.role, content: m.text }));
 
-  let lastOffers = [];
+  let lastSources = null;
+  let pending = null; // o aviso "Pesquisando…", enquanto estiver na tela
 
   try {
     const response = await fetch(`${base}/v1/agent/chat`, {
@@ -259,24 +263,26 @@ async function ask(text, log) {
         if (!data) continue;
 
         if (currentEvent === 'text_delta') {
+          if (pending) {
+            const at = messages.indexOf(pending);
+            if (at >= 0) messages.splice(at, 1);
+            pending = null;
+          }
           if (!messages.includes(assistant)) messages.push(assistant);
           assistant.text += data.text ?? '';
           renderLog(log);
-        } else if (currentEvent === 'price_result') {
-          lastOffers = data.offers ?? [];
-          messages.push({ type: 'price', result: data });
-          await saveQuote({
-            query: data.query,
-            medianCents: Math.round(data.median_price * 100),
-            minCents: Math.round(data.min_price * 100),
-            maxCents: Math.round(data.max_price * 100),
-            sampleSize: data.sample_size,
-            source: data.sources?.[0]?.name ?? null,
-            fetchedAt: data.fetched_at,
-          });
+        } else if (currentEvent === 'tool_started') {
+          // Aviso efêmero: some assim que a resposta começa a chegar, para
+          // não deixar "Pesquisando…" parado na tela depois do resultado.
+          pending = { type: 'status', text: data.label ?? 'Trabalhando…' };
+          messages.push(pending);
+          renderLog(log);
+        } else if (currentEvent === 'sources') {
+          lastSources = data;
+          messages.push({ type: 'sources', payload: data });
           renderLog(log);
         } else if (currentEvent === 'proposal') {
-          messages.push({ type: 'proposal', payload: data, status: 'pending', offers: lastOffers });
+          messages.push({ type: 'proposal', payload: data, status: 'pending', sources: lastSources });
           renderLog(log);
         } else if (currentEvent === 'error') {
           messages.push({ type: 'error', text: data.message ?? 'Algo deu errado.' });

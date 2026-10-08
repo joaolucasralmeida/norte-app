@@ -353,9 +353,10 @@ hr { border: 0; border-top: 1px solid var(--divider); margin: 4px 0; }
 .bubble.user { align-self: flex-end; background: var(--accent); color: #fff; }
 .bubble.error { background: color-mix(in srgb, var(--negative) 14%, transparent); }
 
-.price-range { display: flex; justify-content: space-between; align-items: flex-end; gap: 8px; }
-.price-range div { display: flex; flex-direction: column; }
-.price-range .big { font-size: 17px; }
+/* "Pesquisando na web…": existe só enquanto a resposta não começa a chegar. */
+.bubble.status {
+  background: none; color: var(--text-muted); font-style: italic; padding-left: 0;
+}
 
 /* ----------------------------------------------------------- formulário */
 
