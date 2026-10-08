@@ -17,7 +17,7 @@
 
 // Incremente a cada publicação: é o que descarta o cache antigo nos
 // aparelhos que já instalaram o app.
-const VERSION = 'norte-v8';
+const VERSION = 'norte-v9';
 
 const SHELL = [
   './',

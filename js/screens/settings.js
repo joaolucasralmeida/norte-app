@@ -328,6 +328,12 @@ function assistantCard() {
       Boolean(state.settings.sendSnapshot),
       async (value) => { await setSetting('sendSnapshot', value); },
       'Apenas médias mensais e metas ativas. Nunca lançamentos, saldos por conta ou anotações.'),
+
+    // O usuário precisa saber disso ANTES de ligar o toggle acima, não depois.
+    el('p', { class: 'caption warn' },
+      '⚠ No nível gratuito do Gemini, o Google pode usar o que você envia para treinar os modelos dele. '
+      + 'Perguntar preço de produto não revela nada seu; o resumo financeiro, sim. '
+      + 'Com faturamento ativado no Google AI Studio, essa política não se aplica.'),
   ]);
 }
 
