@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Service worker: faz o app abrir sem internet.
  *
  * Duas estratégias, por um motivo concreto:
@@ -17,7 +17,7 @@
 
 // Incremente a cada publicação: é o que descarta o cache antigo nos
 // aparelhos que já instalaram o app.
-const VERSION = 'norte-v4';
+const VERSION = 'norte-v5';
 
 const SHELL = [
   './',

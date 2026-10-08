@@ -1,6 +1,7 @@
 import { state, setSetting, wipeEverything, saveAccount, deleteAccount } from '../store.js';
 import { storageEstimate } from '../db.js';
-import { exportBackup, importBackup, backupStatus, dataSummary } from '../backup.js';
+import { exportBackup, importBackup, backupStatus, dataSummary, backupReminderEvent } from '../backup.js';
+import { shareICS } from '../ics.js';
 import { money, parseMoney, fmtDate } from '../format.js';
 import {
   el, card, sectionTitle, openSheet, closeSheet, toast, confirmAction,
@@ -49,6 +50,22 @@ function backupCard() {
     el('p', { class: 'caption tiny' },
       'O arquivo é um JSON com tudo: lançamentos, metas, aportes, anotações e eventos. ' +
       'Não tem senha — guarde-o como você guardaria um extrato.'),
+
+    el('hr'),
+
+    el('button', {
+      class: 'btn',
+      onClick: async () => {
+        const result = await shareICS([backupReminderEvent()], 'norte-lembrete-backup.ics');
+        if (result.cancelled) return;
+        toast('Escolha "Calendário" para criar o lembrete semanal.');
+      },
+    }, '🔔 Criar lembrete semanal no Calendário'),
+
+    el('p', { class: 'caption tiny' },
+      'Cria um evento que se repete todo domingo às 20h no app Calendário do iPhone. ' +
+      'Um site não consegue gerar backup sozinho com o app fechado — o iOS não permite —, ' +
+      'então o melhor que dá para fazer é garantir que você seja lembrado.'),
   ]);
 }
 

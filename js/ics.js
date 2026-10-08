@@ -72,6 +72,10 @@ function buildEvent(event) {
     lines.push(`DTEND;VALUE=DATE:${compactDate(nextDay(event.date))}`);
   }
 
+  // Repetição: "FREQ=WEEKLY", "FREQ=MONTHLY" etc. Um único evento recorrente
+  // cobre o ano inteiro sem encher o calendário de entradas soltas.
+  if (event.rrule) lines.push(`RRULE:${event.rrule}`);
+
   if (event.done) {
     lines.push('STATUS:CANCELLED');
   } else {

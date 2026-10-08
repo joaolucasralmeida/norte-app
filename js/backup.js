@@ -18,8 +18,12 @@ import { money, fmtDate, toISODate } from './format.js';
 
 export const SCHEMA = 'norte.web.backup/1';
 const LAST_BACKUP_KEY = 'lastBackupAt';
-/** Acima disso, a tela inicial passa a cobrar um backup. */
-export const BACKUP_WARNING_DAYS = 14;
+/**
+ * Acima disso, a tela inicial passa a cobrar um backup.
+ * Uma semana: curto o bastante para a perda doer pouco, longo o bastante
+ * para o aviso não virar paisagem.
+ */
+export const BACKUP_WARNING_DAYS = 7;
 
 export function buildBackup() {
   return {
@@ -138,6 +142,33 @@ export function backupStatus() {
     return { level: 'warn', text: `Último backup há ${days} dias (${fmtDate(last)}).` };
   }
   return { level: 'ok', text: `Último backup: ${fmtDate(last)}.` };
+}
+
+/**
+ * Evento recorrente semanal para o app Calendário do iPhone.
+ *
+ * É o mais perto de "backup automático" que dá para chegar sem servidor:
+ * o iOS não tem API de execução periódica em segundo plano para web apps —
+ * `Periodic Background Sync` não existe no Safari — então ninguém consegue
+ * gerar um arquivo sozinho enquanto o app está fechado. O que dá para fazer
+ * é garantir que **você** seja lembrado no horário certo, e aí é um toque.
+ */
+export function backupReminderEvent({ weekday = 0, hour = 20 } = {}) {
+  // Próximo domingo às 20h, repetindo toda semana.
+  const start = new Date();
+  start.setDate(start.getDate() + ((weekday - start.getDay() + 7) % 7 || 7));
+
+  return {
+    id: 'norte-backup-semanal',
+    title: 'Fazer backup do Norte',
+    date: toISODate(start),
+    time: `${String(hour).padStart(2, '0')}:00`,
+    notes: 'Abra o Norte, vá em Configurações e toque em Exportar backup. Leva 10 segundos.',
+    kind: 'manual',
+    rrule: 'FREQ=WEEKLY',
+    reminderMinutes: [0],
+    done: false,
+  };
 }
 
 /** Resumo em texto do que há no app — usado na tela de Configurações. */

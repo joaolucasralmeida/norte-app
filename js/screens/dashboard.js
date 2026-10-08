@@ -3,8 +3,8 @@ import {
   totalBalance, accountBalance, monthSummary, expensesByCategory, derivedEvents,
 } from '../domain.js';
 import { money, signedMoney, percent, fmtMonth, fmtDate, monthKey, todayISO } from '../format.js';
-import { el, card, sectionTitle, progressBar, emptyState } from '../ui.js';
-import { backupStatus } from '../backup.js';
+import { el, card, sectionTitle, progressBar, emptyState, toast } from '../ui.js';
+import { backupStatus, exportBackup } from '../backup.js';
 import { navigate } from '../app.js';
 import { openTransactionSheet } from './finance.js';
 import { openChat } from './chat.js';
@@ -32,13 +32,20 @@ export function renderDashboard() {
 // ---------------------------------------------------------------------------
 
 function backupBanner(backup) {
+  // Leva direto à exportação, não às Configurações: quanto menos toques
+  // entre o aviso e o arquivo salvo, mais gente faz o backup.
   return el('button', {
     class: 'banner warn',
-    onClick: () => navigate('configuracoes'),
+    onClick: async () => {
+      const result = await exportBackup();
+      if (result?.cancelled) return;
+      toast('Backup gerado. Salve em Arquivos ou mande para você mesmo.');
+      window.dispatchEvent(new CustomEvent('norte:rerender'));
+    },
   }, [
     el('strong', {}, '⚠ Faça um backup'),
     el('span', {}, `${backup.text} Seus dados ficam só neste aparelho — se você apagar o ícone ou limpar os dados do Safari, eles somem.`),
-    el('span', { class: 'banner-cta' }, 'Fazer backup agora ›'),
+    el('span', { class: 'banner-cta' }, 'Exportar agora ›'),
   ]);
 }
 
