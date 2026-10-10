@@ -17,7 +17,7 @@
 
 // Incremente a cada publicação: é o que descarta o cache antigo nos
 // aparelhos que já instalaram o app.
-const VERSION = 'norte-v14';
+const VERSION = 'norte-v15';
 
 const SHELL = [
   './',
@@ -63,7 +63,17 @@ self.addEventListener('install', (event) => {
     caches.open(VERSION)
       // `addAll` falha inteiro se um arquivo faltar; individual é mais
       // tolerante e evita um app que não instala por causa de um ícone.
-      .then((cache) => Promise.allSettled(SHELL.map((url) => cache.add(url))))
+      //
+      // `cache: 'reload'` não é detalhe: sem ele, `cache.add` aceita o que
+      // estiver no cache HTTP do navegador, e o GitHub Pages serve os
+      // arquivos com `max-age=600`. Publicar e abrir o app dentro desses
+      // dez minutos gravava a versão ANTIGA dentro do cache da versão nova
+      // — e ali ela ficaria até a publicação seguinte. Foi assim que o app
+      // rodou com um `app.js` novo e um `auth.js` velho ao mesmo tempo, o
+      // que num módulo ES quebra a importação inteira.
+      .then((cache) => Promise.allSettled(
+        SHELL.map((url) => cache.add(new Request(url, { cache: 'reload' }))),
+      ))
       .then(() => self.skipWaiting()),
   );
 });
