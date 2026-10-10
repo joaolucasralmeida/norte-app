@@ -17,7 +17,7 @@
 
 // Incremente a cada publicação: é o que descarta o cache antigo nos
 // aparelhos que já instalaram o app.
-const VERSION = 'norte-v12';
+const VERSION = 'norte-v13';
 
 const SHELL = [
   './',
@@ -44,6 +44,7 @@ const SHELL = [
   './js/cloud/config.js',
   './js/cloud/client.js',
   './js/cloud/sync.js',
+  './js/cloud/admin.js',
   // A biblioteca do Supabase fica no nosso domínio, e não num CDN, justamente
   // para caber neste cache: num CDN, o app não abriria sem rede.
   './vendor/supabase.js',

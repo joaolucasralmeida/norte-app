@@ -16,6 +16,7 @@ import { load } from '../store.js';
 import { cloudConfigured } from '../cloud/config.js';
 import { currentSession, signOut } from '../cloud/client.js';
 import { sincronizar, pendencias, limparCopiaLocal } from '../cloud/sync.js';
+import { meuPapel, listarPessoas, convidar as convidarPessoa } from '../cloud/admin.js';
 
 export function renderSettings() {
   return el('div', { class: 'stack' }, [
@@ -23,6 +24,7 @@ export function renderSettings() {
     el('h2', {}, 'Configurações'),
 
     accountCard(),
+    peopleCard(),
     backupCard(),
     calendarsCard(),
     accountsCard(),
@@ -387,6 +389,85 @@ function accountCard() {
       'Seus dados ficam neste aparelho e no servidor. Entrar com o mesmo e-mail em '
       + 'outro computador traz tudo para lá.'),
   ]);
+}
+
+/**
+ * Convidar pessoas. Só aparece para administradores.
+ *
+ * Esconder o cartão de quem não é admin é conveniência, não segurança: quem
+ * editar o JavaScript da página faz ele aparecer. Quem recusa de verdade é a
+ * função no servidor, que confere o papel antes de convidar.
+ */
+function peopleCard() {
+  if (!cloudConfigured()) return null;
+
+  const corpo = el('div', { class: 'stack-xs' }, [el('span', { class: 'caption' }, 'carregando…')]);
+  const bloco = card([sectionTitle('Pessoas'), corpo]);
+  bloco.hidden = true;
+
+  (async () => {
+    const perfil = await meuPapel();
+    if (perfil?.role !== 'admin') return;
+    bloco.hidden = false;
+
+    const email = input({ type: 'email', placeholder: 'pessoa@exemplo.com' });
+    const nome = input({ type: 'text', placeholder: 'Nome completo' });
+    const aviso = el('p', { class: 'caption' });
+
+    const enviar = async () => {
+      aviso.className = 'caption';
+      botao.disabled = true;
+      botao.textContent = 'Enviando…';
+      try {
+        await convidarPessoa(email.value, nome.value);
+        aviso.className = 'caption positive';
+        aviso.textContent = `Convite enviado para ${email.value.trim()}. A pessoa define a própria senha pelo link.`;
+        email.value = '';
+        nome.value = '';
+        atualizarLista();
+      } catch (error) {
+        aviso.className = 'caption negative';
+        aviso.textContent = error.message;
+      }
+      botao.disabled = false;
+      botao.textContent = 'Enviar convite';
+    };
+
+    const botao = el('button', { class: 'btn primary', onClick: enviar }, 'Enviar convite');
+    const lista = el('div', { class: 'stack-xs' });
+
+    const atualizarLista = async () => {
+      try {
+        const pessoas = await listarPessoas();
+        lista.replaceChildren(
+          el('span', { class: 'caption' }, `COM ACESSO (${pessoas.length})`),
+          ...pessoas.map((p) => el('div', { class: 'row' }, [
+            el('span', {}, p.full_name || 'sem nome'),
+            el('span', { class: 'badge' }, p.role === 'admin' ? 'administrador' : 'membro'),
+          ])),
+        );
+      } catch {
+        lista.replaceChildren(el('span', { class: 'caption' }, 'Não consegui carregar a lista.'));
+      }
+    };
+
+    corpo.replaceChildren(
+      el('p', { class: 'caption' },
+        'Convide alguém pelo e-mail. A pessoa recebe um link e escolhe a própria senha — '
+        + 'nenhuma senha é criada aqui nem enviada por mensagem.'),
+      field('E-mail', email),
+      field('Nome', nome),
+      aviso,
+      botao,
+      lista,
+      el('p', { class: 'caption tiny' },
+        'Cada pessoa vê apenas os próprios lançamentos, metas e anotações. '
+        + 'Não há dado compartilhado entre contas.'),
+    );
+    atualizarLista();
+  })();
+
+  return bloco;
 }
 
 function assistantCard() {

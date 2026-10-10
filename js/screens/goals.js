@@ -2,7 +2,7 @@ import {
   state, saveGoal, deleteGoal, addContribution, deleteContribution, contributionsOf,
 } from '../store.js';
 import { contributedCents, remainingCents, goalProgress, goalProjection, requiredMonthly } from '../domain.js';
-import { money, percent, parseMoney, fmtDate, fmtMonth, todayISO } from '../format.js';
+import { money, percent, parseMoney, fmtDate, fmtMonth, todayISO, safeURL } from '../format.js';
 import {
   el, card, emptyState, progressBar, openSheet, closeSheet, toast, confirmAction,
   field, input, moneyInput, select, segmented, toggle, sectionTitle,
@@ -73,8 +73,8 @@ function goalCard(goal) {
     onClick: () => { openGoalId = goal.id; rerender(); },
   }, [
     el('div', { class: 'goal-hero' }, [
-      goal.imageURL
-        ? el('img', { src: goal.imageURL, alt: '', loading: 'lazy', onError: (e) => e.target.remove() })
+      safeURL(goal.imageURL)
+        ? el('img', { src: safeURL(goal.imageURL), alt: '', loading: 'lazy', onError: (e) => e.target.remove() })
         : el('span', { class: 'goal-emoji' }, '🛍️'),
       el('span', { class: `badge ${achieved ? 'ok' : priorityClass(goal.priority)}` },
         achieved ? 'atingida' : priorityLabel(goal.priority)),
@@ -114,16 +114,16 @@ function goalDetail(goal) {
     el('button', { class: 'back-link', onClick: () => { openGoalId = null; rerender(); } }, '‹ Metas'),
 
     el('div', { class: 'goal-hero large' }, [
-      goal.imageURL
-        ? el('img', { src: goal.imageURL, alt: '', onError: (e) => e.target.remove() })
+      safeURL(goal.imageURL)
+        ? el('img', { src: safeURL(goal.imageURL), alt: '', onError: (e) => e.target.remove() })
         : el('span', { class: 'goal-emoji' }, '🛍️'),
     ]),
 
     el('div', { class: 'stack-xs' }, [
       el('h2', {}, goal.title),
-      goal.productURL
-        ? el('a', { href: goal.productURL, target: '_blank', rel: 'noopener noreferrer', class: 'link' },
-            new URL(goal.productURL).hostname + ' ↗')
+      safeURL(goal.productURL)
+        ? el('a', { href: safeURL(goal.productURL), target: '_blank', rel: 'noopener noreferrer', class: 'link' },
+            new URL(safeURL(goal.productURL)).hostname + ' ↗')
         : null,
     ]),
 
@@ -366,17 +366,6 @@ function openContributionSheet(goal) {
       return true;
     },
   });
-}
-
-function safeURL(value) {
-  const trimmed = (value ?? '').trim();
-  if (!trimmed) return null;
-  try {
-    const url = new URL(trimmed);
-    return url.protocol === 'https:' ? url.toString() : null;
-  } catch {
-    return null;
-  }
 }
 
 function rerender() {

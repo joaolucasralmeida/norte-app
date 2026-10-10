@@ -31,14 +31,20 @@ export function renderAuth({ modo = 'entrar', onEntrou }) {
   const tela = el('div', { class: 'auth' });
 
   const desenhar = (atual) => {
+    const forms = {
+      definir: () => formDefinirSenha(onEntrou),
+      entrar: () => formEntrar(onEntrou, () => desenhar('esqueci')),
+      esqueci: () => formEsqueci(() => desenhar('entrar')),
+    };
+
+    // `replaceChildren` transforma `null` no texto "null" — diferente do
+    // helper `el`, que descarta. Por isso a escolha é feita antes.
     tela.replaceChildren(
       el('div', { class: 'auth-marca' }, [
         el('img', { src: 'icons/norte-180-v3.png', alt: '', width: '64', height: '64' }),
         el('h1', {}, 'Norte'),
       ]),
-      atual === 'definir' ? formDefinirSenha(onEntrou) : null,
-      atual === 'entrar' ? formEntrar(onEntrou, () => desenhar('esqueci')) : null,
-      atual === 'esqueci' ? formEsqueci(() => desenhar('entrar')) : null,
+      (forms[atual] ?? forms.entrar)(),
     );
   };
 

@@ -123,3 +123,25 @@ export function daysBetween(isoA, isoB) {
   const ms = fromISODate(isoB) - fromISODate(isoA);
   return Math.round(ms / 86_400_000);
 }
+
+/**
+ * Deixa passar só `https:`, para URLs que vieram de fora.
+ *
+ * O assistente propõe link de produto e imagem, e o cartão de fontes exibe o
+ * que a busca devolveu. Nada disso foi escrito por nós. Um `javascript:` ali
+ * viraria código executado no clique, com a sessão do usuário — e o caminho
+ * até lá é curto: basta uma página que o modelo leia conter a instrução.
+ *
+ * `http:` também fica de fora: o app é servido por https, e um recurso em
+ * http seria bloqueado pelo navegador de qualquer forma.
+ */
+export function safeURL(valor) {
+  const limpo = typeof valor === 'string' ? valor.trim() : '';
+  if (!limpo) return null;
+  try {
+    const url = new URL(limpo);
+    return url.protocol === 'https:' ? url.href : null;
+  } catch {
+    return null;
+  }
+}

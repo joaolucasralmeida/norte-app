@@ -14,8 +14,8 @@
  * Ela nunca deve sair do servidor.
  */
 
-export const SUPABASE_URL = '';
-export const SUPABASE_ANON_KEY = '';
+export const SUPABASE_URL = 'https://jkzsucknezplwedrigjo.supabase.co';
+export const SUPABASE_ANON_KEY = 'sb_publishable_3DBiBrg6lkDO2Hx9D8fFzg_1mwOb4_4';
 
 /** Sem configuração, o app funciona como sempre funcionou: só neste aparelho. */
 export const cloudConfigured = () => Boolean(SUPABASE_URL && SUPABASE_ANON_KEY);

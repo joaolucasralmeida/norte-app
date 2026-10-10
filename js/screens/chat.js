@@ -16,7 +16,7 @@
  */
 
 import { state, setSetting } from '../store.js';
-import { money, parseMoney } from '../format.js';
+import { money, parseMoney, safeURL } from '../format.js';
 import { el, card, openSheet, closeSheet, toast, field, input } from '../ui.js';
 import { openGoalSheet } from './goals.js';
 import { monthSummary, contributedCents, remainingCents } from '../domain.js';
@@ -114,9 +114,9 @@ function sourcesCard(payload) {
   return card([
     el('span', { class: 'caption' }, 'FONTES CONSULTADAS'),
 
-    ...links.map((source) =>
+    ...links.filter((s) => safeURL(s.url)).map((source) =>
       el('a', {
-        href: source.url,
+        href: safeURL(source.url) ?? '#',
         target: '_blank',
         rel: 'noopener noreferrer',
         class: 'link',

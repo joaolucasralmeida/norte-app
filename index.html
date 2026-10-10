@@ -5,6 +5,40 @@
 <!-- viewport-fit=cover + env(safe-area-inset-*) no CSS: sem isso a barra de
      abas fica embaixo do indicador de início do iPhone. -->
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+
+<!--
+  Política de segurança de conteúdo.
+
+  O GitHub Pages não deixa configurar cabeçalhos HTTP, então ela vai pela
+  própria página. Vale menos que o cabeçalho de verdade (um atacante que já
+  consiga alterar o HTML também apaga isto), mas cobre o caso que importa
+  aqui: o app exibe texto e links vindos de uma IA e de buscas na web. Se
+  algum dia um desses conteúdos conseguir virar `<script>`, esta linha é o
+  que impede o script de rodar e de mandar os dados para fora.
+
+  `connect-src` lista só os destinos que o app realmente chama: o Supabase,
+  o Worker do assistente e a agenda do Google. Qualquer tentativa de enviar
+  dados para outro endereço é bloqueada pelo navegador.
+
+  `frame-ancestors` ficaria bem aqui — impediria o app de ser embutido num
+  iframe de outro site — mas o navegador a ignora quando vem por <meta>, e
+  só reclama no console. Para tê-la seria preciso um servidor que define
+  cabeçalhos, que o GitHub Pages não oferece.
+-->
+<meta http-equiv="Content-Security-Policy" content="
+  default-src 'self';
+  script-src 'self' https://accounts.google.com;
+  style-src 'self' 'unsafe-inline';
+  img-src 'self' data: https:;
+  font-src 'self';
+  connect-src 'self' https://jkzsucknezplwedrigjo.supabase.co https://norte-assistente.duo-marketing.workers.dev https://www.googleapis.com https://accounts.google.com;
+  frame-src https://accounts.google.com;
+  form-action 'none';
+  base-uri 'self';
+  object-src 'none'">
+
+<!-- Não vazar o endereço do app para sites de terceiros ao clicar num link. -->
+<meta name="referrer" content="strict-origin-when-cross-origin">
 <meta name="color-scheme" content="light dark">
 <title>Norte</title>
 
