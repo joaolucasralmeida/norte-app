@@ -37,27 +37,56 @@ export function chegouPorLinkDeSenha() {
 }
 
 /**
- * Troca `token_hash` por uma sessão. Devolve `null` quando o link não é
- * desse formato — aí quem resolve é o `detectSessionInUrl` do cliente.
+ * Abre sessão a partir do fragmento de um link de autenticação.
+ *
+ * Aceita os dois formatos, porque eles vêm de caminhos diferentes:
+ *
+ * · `token_hash=...` — o convite gerado pela nossa função. Trocado por
+ *   sessão com `verifyOtp`.
+ * · `access_token=...&refresh_token=...` — o e-mail de recuperação do
+ *   próprio Supabase, que já entrega a sessão pronta.
+ *
+ * Devolve `null` quando não há nada de autenticação no texto.
  */
-async function resgatarTokenHash() {
-  const params = new URLSearchParams((location.hash ?? '').replace(/^#/, ''));
-  const tokenHash = params.get('token_hash');
-  if (!tokenHash) return null;
-
-  const tipo = params.get('type') === 'recovery' ? 'recovery' : 'invite';
+async function abrirSessaoDoFragmento(fragmento) {
+  const params = new URLSearchParams(String(fragmento ?? '').replace(/^.*#/, ''));
   const client = await getClient();
-  const { data, error } = await client.auth.verifyOtp({ token_hash: tokenHash, type: tipo });
+
+  const tokenHash = params.get('token_hash');
+  if (tokenHash) {
+    const tipo = params.get('type') === 'recovery' ? 'recovery' : 'invite';
+    const { data, error } = await client.auth.verifyOtp({ token_hash: tokenHash, type: tipo });
+    if (error) throw new Error(traduzirLink(error.message));
+    return data.session ?? null;
+  }
+
+  const accessToken = params.get('access_token');
+  const refreshToken = params.get('refresh_token');
+  if (accessToken && refreshToken) {
+    const { data, error } = await client.auth.setSession({
+      access_token: accessToken,
+      refresh_token: refreshToken,
+    });
+    if (error) throw new Error(traduzirLink(error.message));
+    return data.session ?? null;
+  }
+
+  return null;
+}
+
+const traduzirLink = (mensagem) => (/expired|invalid|otp/i.test(mensagem)
+  ? 'Este link expirou ou já foi usado. Peça um novo.'
+  : mensagem);
+
+/** O mesmo, lendo da barra de endereços. */
+async function resgatarDaURL() {
+  const sessao = await abrirSessaoDoFragmento(location.hash);
+  if (!sessao) return null;
 
   // Tira o token da barra de endereços assim que ele é usado: ele vale como
   // senha até ser consumido, e não deve ficar no histórico do navegador.
   history.replaceState(null, '', location.pathname + location.search);
-
-  if (error) throw new Error(/expired|invalid/i.test(error.message)
-    ? 'Este link expirou ou já foi usado. Peça um novo convite.'
-    : error.message);
-
-  return data.session ?? null;
+  return sessao;
 }
 
 export function renderAuth({ modo = 'entrar', onEntrou }) {
@@ -66,8 +95,9 @@ export function renderAuth({ modo = 'entrar', onEntrou }) {
   const desenhar = (atual) => {
     const forms = {
       definir: () => formDefinirSenha(onEntrou),
-      entrar: () => formEntrar(onEntrou, () => desenhar('esqueci')),
-      esqueci: () => formEsqueci(() => desenhar('entrar')),
+      entrar: () => formEntrar(onEntrou, () => desenhar('esqueci'), () => desenhar('colar')),
+      esqueci: () => formEsqueci(() => desenhar('entrar'), () => desenhar('colar')),
+      colar: () => formColarLink(() => desenhar('definir'), () => desenhar('entrar')),
     };
 
     // `replaceChildren` transforma `null` no texto "null" — diferente do
@@ -87,7 +117,7 @@ export function renderAuth({ modo = 'entrar', onEntrou }) {
 
 // ---------------------------------------------------------------------------
 
-function formEntrar(onEntrou, aoEsquecer) {
+function formEntrar(onEntrou, aoEsquecer, aoColar) {
   const email = input({ type: 'email', placeholder: 'voce@exemplo.com', autocomplete: 'username' });
   const senha = input({ type: 'password', placeholder: '••••••••', autocomplete: 'current-password' });
   const aviso = el('p', { class: 'caption negative' });
@@ -116,10 +146,64 @@ function formEntrar(onEntrou, aoEsquecer) {
     aviso,
     botao,
     el('button', { class: 'btn link-btn', onClick: aoEsquecer }, 'Esqueci minha senha'),
+    el('button', { class: 'btn link-btn', onClick: aoColar }, 'Recebi um link por e-mail'),
   ]);
 }
 
-function formEsqueci(aoVoltar) {
+/**
+ * Entrar colando o endereço do link recebido por e-mail.
+ *
+ * Existe por um motivo específico: o e-mail de recuperação do Supabase
+ * aponta para o "Site URL" do projeto, que num projeto novo é
+ * `http://localhost:3000`. Quem clica cai numa página de erro — mas o
+ * token veio junto, no fragmento do endereço. Colando aqui, ele é
+ * aproveitado.
+ *
+ * Isso não abre brecha: quem tem o link já tem acesso à conta, porque
+ * recebeu o e-mail. O que não dá para fazer é o contrário — devolver o
+ * link na tela para quem pedir —, aí bastaria pedir recuperação do e-mail
+ * de outra pessoa.
+ */
+function formColarLink(aoEntrar, aoVoltar) {
+  const campo = input({ type: 'text', placeholder: 'http://localhost:3000/#access_token=…' });
+  const aviso = el('p', { class: 'caption negative' });
+
+  const usar = async () => {
+    aviso.textContent = '';
+    if (!campo.value.includes('#')) {
+      aviso.textContent = 'Cole o endereço inteiro, incluindo a parte depois do #.';
+      return;
+    }
+
+    botao.disabled = true;
+    botao.textContent = 'Verificando…';
+    try {
+      const sessao = await abrirSessaoDoFragmento(campo.value);
+      if (!sessao) throw new Error('Não encontrei um token válido nesse endereço.');
+      aoEntrar();
+    } catch (error) {
+      aviso.textContent = error.message;
+      botao.disabled = false;
+      botao.textContent = 'Entrar com o link';
+    }
+  };
+
+  const botao = el('button', { class: 'btn primary wide', onClick: usar }, 'Entrar com o link');
+  campo.addEventListener('keydown', (e) => { if (e.key === 'Enter') usar(); });
+
+  return card([
+    el('strong', {}, 'Usar um link recebido por e-mail'),
+    el('p', { class: 'caption' },
+      'Se o link do e-mail abriu uma página de erro, copie o endereço inteiro da barra '
+      + 'do navegador e cole aqui. O que importa está na parte depois do #.'),
+    field('Endereço do link', campo),
+    aviso,
+    botao,
+    el('button', { class: 'btn link-btn', onClick: aoVoltar }, 'Voltar'),
+  ]);
+}
+
+function formEsqueci(aoVoltar, aoColar) {
   const email = input({ type: 'email', placeholder: 'voce@exemplo.com', autocomplete: 'username' });
   const aviso = el('p', { class: 'caption' });
 
@@ -141,6 +225,7 @@ function formEsqueci(aoVoltar) {
     field('E-mail', email),
     aviso,
     el('button', { class: 'btn primary wide', onClick: enviar }, 'Enviar link'),
+    el('button', { class: 'btn link-btn', onClick: aoColar }, 'Já recebi o e-mail — colar o link'),
     el('button', { class: 'btn link-btn', onClick: aoVoltar }, 'Voltar'),
   ]);
 }
@@ -191,7 +276,7 @@ function formDefinirSenha(onEntrou) {
  * deixar a pessoa diante de um formulário que vai falhar ao salvar.
  */
 export async function sessaoDoLink() {
-  const porTokenHash = await resgatarTokenHash();
+  const porTokenHash = await resgatarDaURL();
   if (porTokenHash) return porTokenHash;
 
   const client = await getClient();
