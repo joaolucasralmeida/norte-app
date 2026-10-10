@@ -92,9 +92,21 @@ Deno.serve(async (req: Request) => {
   // Convite
   // -------------------------------------------------------------------------
 
-  const { data, error } = await admin.auth.admin.inviteUserByEmail(email, {
-    data: { full_name: nome },
-    redirectTo: 'https://joaolucasralmeida.github.io/norte-app/',
+  // `generateLink` em vez de `inviteUserByEmail`, por dois motivos concretos:
+  //
+  // 1. O link do e-mail automático aponta para o "Site URL" do projeto, que
+  //    num projeto novo é `http://localhost:3000`. Quem clicasse caía num
+  //    servidor que não existe. Corrigir isso exige o painel, que não está
+  //    ao alcance daqui — então o app deixa de depender disso.
+  // 2. O plano gratuito envia 2 e-mails por hora. Com o link em mãos, o
+  //    convite não depende de fila de e-mail nenhuma.
+  //
+  // `generateLink` cria o usuário e devolve `hashed_token` sem disparar
+  // e-mail. Montamos o endereço final nós mesmos, apontando para o app.
+  const { data, error } = await admin.auth.admin.generateLink({
+    type: 'invite',
+    email,
+    options: { data: { full_name: nome } },
   });
 
   if (error) {
@@ -110,5 +122,12 @@ Deno.serve(async (req: Request) => {
     await admin.from('profiles').update({ role: 'admin' }).eq('id', data.user.id);
   }
 
-  return json({ ok: true, email, papel });
+  const token = data.properties?.hashed_token;
+  if (!token) return json({ erro: 'sem_token' }, 502);
+
+  // O token vai no fragmento (`#`), não na query: o fragmento não é enviado
+  // ao servidor nem gravado em log de acesso.
+  const link = `https://joaolucasralmeida.github.io/norte-app/#token_hash=${encodeURIComponent(token)}&type=invite`;
+
+  return json({ ok: true, email, papel, link });
 });

@@ -419,9 +419,11 @@ function peopleCard() {
       botao.disabled = true;
       botao.textContent = 'Enviando…';
       try {
-        await convidarPessoa(email.value, nome.value);
+        const { link } = await convidarPessoa(email.value, nome.value);
         aviso.className = 'caption positive';
-        aviso.textContent = `Convite enviado para ${email.value.trim()}. A pessoa define a própria senha pelo link.`;
+        aviso.textContent = `Conta criada para ${email.value.trim()}. Envie o link abaixo para a pessoa — `
+          + 'ela escolhe a própria senha ao abrir.';
+        mostrarLink(link);
         email.value = '';
         nome.value = '';
         atualizarLista();
@@ -433,8 +435,43 @@ function peopleCard() {
       botao.textContent = 'Enviar convite';
     };
 
-    const botao = el('button', { class: 'btn primary', onClick: enviar }, 'Enviar convite');
+    const botao = el('button', { class: 'btn primary', onClick: enviar }, 'Criar convite');
     const lista = el('div', { class: 'stack-xs' });
+    const caixaLink = el('div', { class: 'stack-xs' });
+
+    /**
+     * O link vale como senha até ser usado uma vez. Por isso ele aparece
+     * aqui para ser copiado e enviado pelo canal que o admin escolher, em
+     * vez de sair por e-mail automático — que, além do limite de 2 por hora
+     * do plano gratuito, apontaria para o endereço errado.
+     */
+    const mostrarLink = (link) => {
+      if (!link) return;
+      const campo = input({ type: 'text', value: link, readonly: true });
+      campo.addEventListener('focus', () => campo.select());
+
+      caixaLink.replaceChildren(
+        field('Link de primeiro acesso', campo),
+        el('div', { class: 'actions' }, [
+          el('button', {
+            class: 'btn',
+            onClick: async () => {
+              try {
+                await navigator.clipboard.writeText(link);
+                toast('Link copiado.');
+              } catch {
+                campo.select();
+                toast('Selecione e copie o link acima.');
+              }
+            },
+          }, 'Copiar link'),
+          el('button', { class: 'btn', onClick: () => caixaLink.replaceChildren() }, 'Esconder'),
+        ]),
+        el('p', { class: 'caption warn' },
+          '⚠ Esse link entra na conta sem pedir senha, até ser usado uma vez. '
+          + 'Mande por um canal privado e não o republique.'),
+      );
+    };
 
     const atualizarLista = async () => {
       try {
@@ -459,6 +496,7 @@ function peopleCard() {
       field('Nome', nome),
       aviso,
       botao,
+      caixaLink,
       lista,
       el('p', { class: 'caption tiny' },
         'Cada pessoa vê apenas os próprios lançamentos, metas e anotações. '

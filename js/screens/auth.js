@@ -18,13 +18,46 @@ import { el, card, input, field, toast } from '../ui.js';
 import { signIn, sendReset, updatePassword, getClient } from '../cloud/client.js';
 
 /**
- * O link do convite e o de recuperação chegam com o token no fragmento da
- * URL (`#access_token=...&type=recovery`). O cliente do Supabase consome e
- * limpa isso sozinho, então precisamos olhar antes que ele apague.
+ * O link de convite ou de recuperação chega com o token no fragmento da URL.
+ * Dois formatos, por razões diferentes:
+ *
+ * · `#token_hash=...&type=invite` — o nosso. A função `convidar` monta o
+ *   endereço apontando direto para cá, e nós trocamos o token por sessão
+ *   com `verifyOtp`. É o caminho que **não** depende do "Site URL" do
+ *   projeto, que num projeto novo aponta para `http://localhost:3000` e só
+ *   pode ser corrigido pelo painel.
+ *
+ * · `#access_token=...&type=recovery` — o do e-mail automático do Supabase,
+ *   usado pelo "esqueci minha senha". Aqui o cliente já recebe a sessão
+ *   pronta e consome o fragmento sozinho.
  */
 export function chegouPorLinkDeSenha() {
   const fragmento = location.hash ?? '';
-  return /type=(recovery|invite|signup)/.test(fragmento);
+  return /type=(recovery|invite|signup)/.test(fragmento) || fragmento.includes('token_hash=');
+}
+
+/**
+ * Troca `token_hash` por uma sessão. Devolve `null` quando o link não é
+ * desse formato — aí quem resolve é o `detectSessionInUrl` do cliente.
+ */
+async function resgatarTokenHash() {
+  const params = new URLSearchParams((location.hash ?? '').replace(/^#/, ''));
+  const tokenHash = params.get('token_hash');
+  if (!tokenHash) return null;
+
+  const tipo = params.get('type') === 'recovery' ? 'recovery' : 'invite';
+  const client = await getClient();
+  const { data, error } = await client.auth.verifyOtp({ token_hash: tokenHash, type: tipo });
+
+  // Tira o token da barra de endereços assim que ele é usado: ele vale como
+  // senha até ser consumido, e não deve ficar no histórico do navegador.
+  history.replaceState(null, '', location.pathname + location.search);
+
+  if (error) throw new Error(/expired|invalid/i.test(error.message)
+    ? 'Este link expirou ou já foi usado. Peça um novo convite.'
+    : error.message);
+
+  return data.session ?? null;
 }
 
 export function renderAuth({ modo = 'entrar', onEntrou }) {
@@ -151,9 +184,35 @@ function formDefinirSenha(onEntrou) {
   ]);
 }
 
-/** Espera o cliente processar o token do link antes de decidir o que mostrar. */
+/**
+ * Resolve o link de senha e devolve a sessão que ele abriu.
+ *
+ * Lança quando o link não vale mais — quem chama mostra o motivo, em vez de
+ * deixar a pessoa diante de um formulário que vai falhar ao salvar.
+ */
 export async function sessaoDoLink() {
+  const porTokenHash = await resgatarTokenHash();
+  if (porTokenHash) return porTokenHash;
+
   const client = await getClient();
   const { data } = await client.auth.getSession();
   return data.session ?? null;
+}
+
+/** Tela de link inválido, com caminho de saída. */
+export function renderLinkInvalido(mensagem) {
+  return el('div', { class: 'auth' }, [
+    el('div', { class: 'auth-marca' }, [
+      el('img', { src: 'icons/norte-180-v3.png', alt: '', width: '64', height: '64' }),
+      el('h1', {}, 'Norte'),
+    ]),
+    card([
+      el('strong', {}, 'Link inválido'),
+      el('p', { class: 'caption' }, mensagem),
+      el('button', {
+        class: 'btn primary wide',
+        onClick: () => { location.hash = ''; location.reload(); },
+      }, 'Ir para a tela de entrada'),
+    ]),
+  ]);
 }

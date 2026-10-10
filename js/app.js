@@ -11,7 +11,7 @@ import { el, clear, initSheet, toast } from './ui.js';
 import { cloudConfigured } from './cloud/config.js';
 import { currentSession, onAuthChange } from './cloud/client.js';
 import { sincronizar } from './cloud/sync.js';
-import { renderAuth, chegouPorLinkDeSenha, sessaoDoLink } from './screens/auth.js';
+import { renderAuth, chegouPorLinkDeSenha, sessaoDoLink, renderLinkInvalido } from './screens/auth.js';
 import { renderDashboard } from './screens/dashboard.js';
 import { renderFinance } from './screens/finance.js';
 import { renderGoals } from './screens/goals.js';
@@ -162,9 +162,16 @@ async function boot() {
     // O link do convite traz a pessoa já autenticada, com uma sessão de uso
     // único: o que falta é escolher a senha, não entrar.
     if (chegouPorLinkDeSenha()) {
-      await sessaoDoLink();
-      mostrarEntrada('definir');
       registerServiceWorker();
+      try {
+        await sessaoDoLink();
+        mostrarEntrada('definir');
+      } catch (error) {
+        // Link vencido ou já usado. Dizer isso é melhor do que mostrar o
+        // formulário de senha e falhar só no "Salvar".
+        document.body.classList.add('deslogado');
+        clear(document.getElementById('screen')).append(renderLinkInvalido(error.message));
+      }
       return;
     }
     if (!(await currentSession())) {
