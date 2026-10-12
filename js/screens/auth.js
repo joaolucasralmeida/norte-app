@@ -225,7 +225,24 @@ function formEsqueci(aoVoltar, aoColar) {
     field('E-mail', email),
     aviso,
     el('button', { class: 'btn primary wide', onClick: enviar }, 'Enviar link'),
-    el('button', { class: 'btn link-btn', onClick: aoColar }, 'Já recebi o e-mail — colar o link'),
+
+    // O aviso vem ANTES de a pessoa clicar no e-mail, não depois.
+    //
+    // O link do e-mail aponta para o endereço configurado no projeto, que
+    // num projeto novo é `http://localhost:3000` — e abre uma página de
+    // erro. Quem não foi avisado conclui que o app está quebrado e tenta de
+    // novo, consumindo outro token. Aconteceu três vezes antes de este
+    // texto existir.
+    el('div', { class: 'callout' }, [
+      el('strong', {}, '⚠ O link vai abrir uma página de erro'),
+      el('p', { class: 'caption' },
+        'É esperado: ele aponta para um endereço que não existe no seu computador. '
+        + 'Quando isso acontecer, copie o endereço inteiro da barra do navegador — '
+        + 'mesmo o que começa com localhost — e cole no botão abaixo. O que importa '
+        + 'está na parte depois do #.'),
+      el('button', { class: 'btn wide', onClick: aoColar }, 'Colar o link que recebi'),
+    ]),
+
     el('button', { class: 'btn link-btn', onClick: aoVoltar }, 'Voltar'),
   ]);
 }

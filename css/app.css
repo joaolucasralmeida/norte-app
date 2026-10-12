@@ -515,3 +515,12 @@ body.deslogado #screen-title { visibility: hidden; }
 .sync-ponto { width: 8px; height: 8px; border-radius: 50%; background: var(--positive); flex: none; }
 .sync-ponto.pendente { background: var(--accent); }
 .sync-ponto.offline { background: var(--text-muted); }
+
+/* Aviso destacado dentro de um cartão, para instrução que não pode passar
+   despercebida. */
+.callout {
+  display: flex; flex-direction: column; gap: 8px;
+  padding: 12px; border-radius: 10px;
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+  border: 1px solid color-mix(in srgb, var(--accent) 30%, transparent);
+}
