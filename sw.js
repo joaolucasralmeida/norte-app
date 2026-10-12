@@ -17,7 +17,7 @@
 
 // Incremente a cada publicação: é o que descarta o cache antigo nos
 // aparelhos que já instalaram o app.
-const VERSION = 'norte-v16';
+const VERSION = 'norte-v17';
 
 const SHELL = [
   './',
@@ -94,6 +94,22 @@ function isDocument(request, url) {
     || url.pathname.endsWith('.webmanifest');
 }
 
+/**
+ * Código também vai pela rede primeiro.
+ *
+ * O HTML já era buscado na rede, mas o JavaScript vinha do cache — e os dois
+ * precisam combinar. Quando não combinavam, o app carregava um `app.js` novo
+ * importando um `auth.js` velho: em módulos ES isso derruba a importação
+ * inteira, e a tela volta para a versão anterior **sem erro no console**.
+ *
+ * Custou três rodadas de "corrigi, testei, deu o mesmo erro" até aparecer.
+ * Imagem e ícone continuam vindo do cache: eles têm o número da versão no
+ * nome, então nunca ficam fora de sincronia.
+ */
+function isCode(url) {
+  return url.pathname.endsWith('.js') || url.pathname.endsWith('.css');
+}
+
 self.addEventListener('fetch', (event) => {
   const { request } = event;
   if (request.method !== 'GET') return;
@@ -102,16 +118,25 @@ self.addEventListener('fetch', (event) => {
   // Só servimos do cache o que é nosso e da mesma origem.
   if (url.origin !== location.origin) return;
 
-  if (isDocument(request, url)) {
+  if (isDocument(request, url) || isCode(url)) {
     event.respondWith(networkFirst(request));
     return;
   }
   event.respondWith(cacheFirst(event, request));
 });
 
+/** Rede lenta não pode virar tela branca: depois disso, usa o cache. */
+const TIMEOUT_DE_REDE = 3000;
+
 async function networkFirst(request) {
   try {
-    const response = await fetch(request, { cache: 'no-cache' });
+    // `AbortSignal.timeout` em vez de esperar indefinidamente: num celular
+    // com sinal ruim, a rede não falha — ela demora. Sem o limite, o app
+    // ficaria em branco esperando algo que já está guardado aqui.
+    const response = await fetch(request, {
+      cache: 'no-cache',
+      signal: AbortSignal.timeout(TIMEOUT_DE_REDE),
+    });
     if (response.ok) {
       const copy = response.clone();
       const cache = await caches.open(VERSION);
@@ -119,8 +144,14 @@ async function networkFirst(request) {
     }
     return response;
   } catch {
-    // Offline: devolve o que tiver guardado.
-    return (await caches.match(request)) ?? (await caches.match('./index.html'));
+    const guardado = await caches.match(request);
+    if (guardado) return guardado;
+
+    // Só a navegação cai para a página inicial. Devolver HTML no lugar de um
+    // `.js` que faltou criaria um erro de sintaxe incompreensível.
+    return request.mode === 'navigate'
+      ? (await caches.match('./index.html')) ?? Response.error()
+      : Response.error();
   }
 }
 
