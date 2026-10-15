@@ -15,9 +15,13 @@
  *   existe: a partir daí esta porta responde 403.
  *
  * · **Convite normal** — exige um token válido de alguém com papel `admin`.
+ *   Se o e-mail já tiver conta, o link gerado é de redefinição de senha em
+ *   vez de convite. É assim que alguém que esqueceu a senha volta a entrar
+ *   sem depender do e-mail automático do Supabase, que aponta para um
+ *   endereço que não existe.
  *
- * O convidado recebe um link e define a própria senha. Senha nenhuma é
- * gerada, transmitida ou armazenada por este código.
+ * Em todos os casos a pessoa escolhe a própria senha ao abrir o link. Senha
+ * nenhuma é gerada, transmitida ou armazenada por este código.
  */
 
 import { createClient } from 'jsr:@supabase/supabase-js@2';
@@ -92,28 +96,37 @@ Deno.serve(async (req: Request) => {
   // Convite
   // -------------------------------------------------------------------------
 
-  // `generateLink` em vez de `inviteUserByEmail`, por dois motivos concretos:
+  // `generateLink`, e não `inviteUserByEmail`, por dois motivos concretos:
   //
-  // 1. O link do e-mail automático aponta para o "Site URL" do projeto, que
-  //    num projeto novo é `http://localhost:3000`. Quem clicasse caía num
-  //    servidor que não existe. Corrigir isso exige o painel, que não está
-  //    ao alcance daqui — então o app deixa de depender disso.
-  // 2. O plano gratuito envia 2 e-mails por hora. Com o link em mãos, o
-  //    convite não depende de fila de e-mail nenhuma.
+  // 1. O e-mail automático aponta para o "Site URL" do projeto, que num
+  //    projeto novo é `http://localhost:3000`. Quem clicava caía num
+  //    servidor inexistente, e corrigir isso exige o painel — fora do
+  //    alcance daqui. Com `generateLink` montamos o endereço nós mesmos.
+  // 2. O plano gratuito envia 2 e-mails por hora. Sem e-mail, o convite não
+  //    depende de fila nenhuma.
   //
-  // `generateLink` cria o usuário e devolve `hashed_token` sem disparar
-  // e-mail. Montamos o endereço final nós mesmos, apontando para o app.
-  const { data, error } = await admin.auth.admin.generateLink({
-    type: 'invite',
-    email,
-    options: { data: { full_name: nome } },
-  });
+  // O tipo do link depende de a pessoa já existir:
+  //
+  // · **invite** — conta nova.
+  // · **recovery** — conta existente. É o que resolve "esqueci minha senha"
+  //   sem e-mail: um admin gera o link e entrega pelo canal que quiser.
+  //
+  // Só admin chega até aqui, e isso é o que separa esta função de uma porta
+  // escancarada: se qualquer um pudesse pedir, bastaria digitar o e-mail de
+  // outra pessoa para receber a chave da conta dela.
+  const cadastrados = await admin.auth.admin.listUsers({ page: 1, perPage: 1000 });
+  const jaExiste = (cadastrados.data?.users ?? []).some((u) => u.email === email);
+
+  const tipo: 'invite' | 'recovery' = jaExiste ? 'recovery' : 'invite';
+
+  const { data, error } = await admin.auth.admin.generateLink(
+    tipo === 'invite'
+      ? { type: 'invite', email, options: { data: { full_name: nome } } }
+      : { type: 'recovery', email },
+  );
 
   if (error) {
-    // "já registrado" não é falha de sistema, é informação para quem convidou.
-    const jaExiste = /already|registered|exists/i.test(error.message);
-    return json({ erro: jaExiste ? 'ja_cadastrado' : 'falha_no_convite', detalhe: error.message },
-      jaExiste ? 409 : 502);
+    return json({ erro: 'falha_no_convite', detalhe: error.message }, 502);
   }
 
   // O gatilho `handle_new_user` já criou o perfil com papel 'member'. Só o
@@ -127,7 +140,7 @@ Deno.serve(async (req: Request) => {
 
   // O token vai no fragmento (`#`), não na query: o fragmento não é enviado
   // ao servidor nem gravado em log de acesso.
-  const link = `https://joaolucasralmeida.github.io/norte-app/#token_hash=${encodeURIComponent(token)}&type=invite`;
+  const link = `https://joaolucasralmeida.github.io/norte-app/#token_hash=${encodeURIComponent(token)}&type=${tipo}`;
 
-  return json({ ok: true, email, papel, link });
+  return json({ ok: true, email, papel, link, tipo });
 });

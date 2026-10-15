@@ -417,12 +417,17 @@ function peopleCard() {
     const enviar = async () => {
       aviso.className = 'caption';
       botao.disabled = true;
-      botao.textContent = 'Enviando…';
+      botao.textContent = 'Gerando…';
       try {
-        const { link } = await convidarPessoa(email.value, nome.value);
+        const { link, tipo } = await convidarPessoa(email.value, nome.value);
         aviso.className = 'caption positive';
-        aviso.textContent = `Conta criada para ${email.value.trim()}. Envie o link abaixo para a pessoa — `
-          + 'ela escolhe a própria senha ao abrir.';
+        // O mesmo botão serve para os dois casos: quem não tem conta recebe
+        // um convite, quem já tem recebe um link de redefinição de senha.
+        // É assim que alguém que esqueceu a senha volta a entrar sem
+        // depender do e-mail automático.
+        aviso.textContent = tipo === 'recovery'
+          ? `${email.value.trim()} já tem conta. O link abaixo permite definir uma senha nova.`
+          : `Conta criada para ${email.value.trim()}. Envie o link abaixo — a pessoa escolhe a própria senha.`;
         mostrarLink(link);
         email.value = '';
         nome.value = '';
@@ -432,10 +437,10 @@ function peopleCard() {
         aviso.textContent = error.message;
       }
       botao.disabled = false;
-      botao.textContent = 'Enviar convite';
+      botao.textContent = 'Gerar link';
     };
 
-    const botao = el('button', { class: 'btn primary', onClick: enviar }, 'Criar convite');
+    const botao = el('button', { class: 'btn primary', onClick: enviar }, 'Gerar link');
     const lista = el('div', { class: 'stack-xs' });
     const caixaLink = el('div', { class: 'stack-xs' });
 
@@ -490,8 +495,9 @@ function peopleCard() {
 
     corpo.replaceChildren(
       el('p', { class: 'caption' },
-        'Convide alguém pelo e-mail. A pessoa recebe um link e escolhe a própria senha — '
-        + 'nenhuma senha é criada aqui nem enviada por mensagem.'),
+        'Digite o e-mail: se a pessoa ainda não tem conta, isto cria uma; se já tem, gera '
+        + 'um link para ela definir uma senha nova. Em nenhum dos casos uma senha é criada '
+        + 'aqui ou enviada por mensagem.'),
       field('E-mail', email),
       field('Nome', nome),
       aviso,
