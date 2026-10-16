@@ -2,8 +2,9 @@ import { state } from '../store.js';
 import {
   totalBalance, accountBalance, monthSummary, expensesByCategory, derivedEvents,
 } from '../domain.js';
-import { money, signedMoney, percent, fmtMonth, fmtDate, monthKey, todayISO } from '../format.js';
-import { el, card, sectionTitle, progressBar, emptyState, toast } from '../ui.js';
+import { money, signedMoney, fmtMonth, fmtDate, monthKey, todayISO } from '../format.js';
+import { el, card, sectionTitle, emptyState, toast } from '../ui.js';
+import { donutChart } from '../chart.js';
 import { backupStatus, exportBackup } from '../backup.js';
 import { navigate } from '../app.js';
 import { openTransactionSheet } from './finance.js';
@@ -118,17 +119,16 @@ function categoriesCard(month) {
     ]);
   }
 
-  const palette = ['#2563EB', '#10B981', '#F59E0B', '#8B5CF6', '#EF4444', '#06B6D4', '#9CA3AF'];
-
+  // A rosca substituiu as barras de progresso que havia aqui: as duas
+  // mostravam a mesma proporção, e ver o dado duas vezes no mesmo cartão só
+  // ocupava espaço. A legenda preserva o número exato de cada categoria.
   return card([
     el('h2', {}, 'Despesas por categoria'),
-    ...slices.slice(0, 6).map((slice, index) => el('div', { class: 'cat-row' }, [
-      el('div', { class: 'cat-top' }, [
-        el('span', {}, slice.name),
-        el('span', { class: 'caption mono' }, `${percent(slice.share)} · ${money(slice.cents)}`),
-      ]),
-      progressBar(slice.share, palette[index % palette.length]),
-    ])),
+    donutChart(slices, {
+      total: slices.reduce((soma, s) => soma + s.cents, 0),
+      rotulo: 'Gasto no mês',
+    }),
+    el('p', { class: 'caption tiny center' }, 'Toque numa fatia para ver o valor.'),
   ]);
 }
 

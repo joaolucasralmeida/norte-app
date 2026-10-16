@@ -30,6 +30,36 @@ export function el(tag, props = {}, children = []) {
   return node;
 }
 
+/**
+ * O mesmo que `el`, para SVG.
+ *
+ * Precisa existir separado porque `document.createElement('circle')` cria um
+ * elemento HTML chamado "circle", que o navegador não desenha. SVG exige o
+ * namespace, e o erro é silencioso: o elemento aparece no DOM e nada surge
+ * na tela.
+ */
+const SVG_NS = 'http://www.w3.org/2000/svg';
+
+export function svg(tag, props = {}, children = []) {
+  const node = document.createElementNS(SVG_NS, tag);
+
+  for (const [key, value] of Object.entries(props)) {
+    if (value === null || value === undefined || value === false) continue;
+    if (key.startsWith('on') && typeof value === 'function') {
+      node.addEventListener(key.slice(2).toLowerCase(), value);
+    } else {
+      // Em SVG quase tudo é atributo, não propriedade.
+      node.setAttribute(key, String(value));
+    }
+  }
+
+  for (const child of [children].flat(Infinity)) {
+    if (child === null || child === undefined || child === false) continue;
+    node.append(child instanceof Node ? child : document.createTextNode(String(child)));
+  }
+  return node;
+}
+
 export const $ = (selector, root = document) => root.querySelector(selector);
 
 export function clear(node) {

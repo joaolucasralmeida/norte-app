@@ -103,20 +103,38 @@ export function monthSummary(transactions, month, includeUnpaid = true) {
   return { income, expense, result: income - expense };
 }
 
+/** Cinza neutro para o que não tem categoria — não compete com as de verdade. */
+const SEM_CATEGORIA = { name: 'Sem categoria', color: '#9CA3AF', icon: '•••' };
+
 export function expensesByCategory(transactions, categories, month) {
   const totals = new Map();
 
   for (const tx of transactions) {
     if (tx.kind !== 'expense' || !tx.date.startsWith(month)) continue;
-    const name = categories.find((c) => c.id === tx.categoryId)?.name ?? 'Sem categoria';
-    totals.set(name, (totals.get(name) ?? 0) + tx.amountCents);
+
+    const categoria = categories.find((c) => c.id === tx.categoryId) ?? SEM_CATEGORIA;
+    const atual = totals.get(categoria.name);
+
+    // A cor e o ícone vêm da categoria, e não de uma paleta fixa do gráfico:
+    // é o que faz a fatia azul aqui ser a mesma coisa que a bolinha azul na
+    // lista de lançamentos. Com paleta própria, a mesma categoria mudaria de
+    // cor conforme o mês tivesse mais ou menos gastos.
+    if (atual) atual.cents += tx.amountCents;
+    else {
+      totals.set(categoria.name, {
+        name: categoria.name,
+        color: categoria.color ?? SEM_CATEGORIA.color,
+        icon: categoria.icon ?? null,
+        cents: tx.amountCents,
+      });
+    }
   }
 
-  const grand = [...totals.values()].reduce((a, b) => a + b, 0);
+  const grand = [...totals.values()].reduce((soma, c) => soma + c.cents, 0);
   if (grand === 0) return [];
 
-  return [...totals.entries()]
-    .map(([name, cents]) => ({ name, cents, share: cents / grand }))
+  return [...totals.values()]
+    .map((c) => ({ ...c, share: c.cents / grand }))
     .sort((a, b) => b.cents - a.cents);
 }
 
