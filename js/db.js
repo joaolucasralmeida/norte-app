@@ -236,13 +236,21 @@ export async function outboxClear(keys) {
  */
 export async function outboxSeedExisting() {
   const db = await openDB();
-  const { transaction, done } = tx(db, [...SYNCED_STORES, 'outbox'], 'readwrite');
+  const { transaction, done } = tx(db, [...SYNCED_STORES, 'meta', 'outbox'], 'readwrite');
   const fila = transaction.objectStore('outbox');
 
   await Promise.all(SYNCED_STORES.map(async (store) => {
     const registros = await toPromise(transaction.objectStore(store).getAll());
     for (const registro of registros) enfileirar(fila, store, registro.id, 'upsert');
   }));
+
+  // As preferências entram junto. Sem isto, quem já usava o app teria os
+  // lançamentos no servidor e o endereço do assistente só no aparelho onde
+  // foi digitado — que é exatamente a queixa que originou tudo isto.
+  const preferencias = await toPromise(transaction.objectStore('meta').getAll());
+  for (const { key } of preferencias) {
+    if (configuracaoSincroniza(key)) enfileirar(fila, 'meta', key, 'upsert');
+  }
 
   await done;
 }
@@ -268,8 +276,40 @@ export async function getMeta(key, fallback = null) {
   return record?.value ?? fallback;
 }
 
-export async function setMeta(key, value) {
-  return put('meta', { key, value });
+/**
+ * Preferências que NÃO viajam entre aparelhos.
+ *
+ * A regra padrão é o contrário: configuração nova sincroniza sozinha, sem
+ * ninguém precisar lembrar de cadastrá-la. Uma lista de permissões teria o
+ * defeito oposto — a configuração esquecida ficaria presa num aparelho só, e
+ * ninguém notaria.
+ *
+ * · `sync.*` é a contabilidade da própria sincronização: "até quando já
+ *   baixei" e "já semeei o servidor". São respostas sobre ESTE aparelho.
+ *   Sincronizá-las faria um aparelho herdar o marcador do outro e pular
+ *   tudo o que ainda não baixou — perda de dados silenciosa.
+ *
+ * · `googleSyncedAt` é quando ESTE aparelho importou a agenda do Google. Os
+ *   eventos importados também não sincronizam (são espelho de outra fonte),
+ *   então compartilhar a data faria o computador achar que já importou algo
+ *   que só existe no celular.
+ */
+const CONFIGURACOES_LOCAIS = ['googleSyncedAt'];
+
+export const configuracaoSincroniza = (key) => (
+  !String(key).startsWith('sync.') && !CONFIGURACOES_LOCAIS.includes(key)
+);
+
+export async function setMeta(key, value, { silent = false } = {}) {
+  const db = await openDB();
+  const naFila = !silent && configuracaoSincroniza(key);
+  const stores = naFila ? ['meta', 'outbox'] : ['meta'];
+
+  const { transaction, done } = tx(db, stores, 'readwrite');
+  transaction.objectStore('meta').put({ key, value });
+  if (naFila) enfileirar(transaction.objectStore('outbox'), 'meta', key, 'upsert');
+  await done;
+  return { key, value };
 }
 
 /** Lê tudo de uma vez — o app mantém o estado em memória (ver store.js). */

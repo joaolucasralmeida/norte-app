@@ -109,6 +109,50 @@ let rodando = false;
 // Puxar
 // ---------------------------------------------------------------------------
 
+/**
+ * Preferências — tabela `settings`, formato próprio.
+ *
+ * Não cabe no laço das outras tabelas: ali cada linha é um registro com
+ * `id`, aqui é um par chave/valor com chave composta (usuário + chave). O
+ * valor vai como JSON, então texto, número e booleano voltam com o mesmo
+ * tipo com que saíram.
+ */
+async function puxarConfiguracoes(client, desde) {
+  const { data, error } = await client
+    .from('settings')
+    .select('key, value, updated_at')
+    .gt('updated_at', desde);
+
+  if (error) throw new Error(`Falha ao baixar configurações: ${error.message}`);
+
+  for (const linha of data ?? []) {
+    if (!db.configuracaoSincroniza(linha.key)) continue;
+    await db.setMeta(linha.key, linha.value, { silent: true });
+  }
+  return (data ?? []).length;
+}
+
+async function empurrarConfiguracoes(client, pendentes, userId) {
+  if (pendentes.length === 0) return [];
+
+  const todas = await db.getAll('meta');
+  const porChave = new Map(todas.map((m) => [m.key, m.value]));
+
+  const linhas = pendentes
+    .filter((item) => porChave.has(item.id))
+    .map((item) => ({ user_id: userId, key: item.id, value: porChave.get(item.id) ?? null }));
+
+  if (linhas.length === 0) return pendentes.map((i) => i.key);
+
+  // `user_id` vai explícito, e não pela coluna com default: o alvo do
+  // conflito é a chave composta (user_id, key), e o Postgres precisa dos
+  // dois valores para saber se está atualizando ou inserindo.
+  const { error } = await client.from('settings').upsert(linhas, { onConflict: 'user_id,key' });
+  if (error) throw new Error(`Falha ao enviar configurações: ${error.message}`);
+
+  return pendentes.map((i) => i.key);
+}
+
 async function puxar(client) {
   const desde = await db.getMeta(CHAVE_ULTIMO_PULL, INICIO_DOS_TEMPOS);
   // O relógio do servidor é o que vale. Pegamos o instante ANTES de ler, para
@@ -137,6 +181,8 @@ async function puxar(client) {
     recebidos += data.length;
   }
 
+  recebidos += await puxarConfiguracoes(client, desde);
+
   await db.setMeta(CHAVE_ULTIMO_PULL, agora);
   return recebidos;
 }
@@ -145,7 +191,7 @@ async function puxar(client) {
 // Empurrar
 // ---------------------------------------------------------------------------
 
-async function empurrar(client) {
+async function empurrar(client, userId) {
   const fila = await db.outboxAll();
   if (fila.length === 0) return 0;
 
@@ -187,6 +233,12 @@ async function empurrar(client) {
       concluidos.push(...exclusoes.map((i) => i.key));
     }
   }
+
+  concluidos.push(...await empurrarConfiguracoes(
+    client,
+    fila.filter((item) => item.store === 'meta'),
+    userId,
+  ));
 
   await db.outboxClear(concluidos);
   return concluidos.length;
@@ -240,9 +292,17 @@ export async function sincronizar() {
 
   try {
     const client = await getClient();
+
+    // As preferências usam chave composta (usuário + chave), então o id
+    // precisa ir explícito no upsert — a coluna com default não serve para
+    // o Postgres resolver o conflito.
+    const { data: sessao } = await client.auth.getSession();
+    const userId = sessao?.session?.user?.id;
+    if (!userId) throw new Error('Sem sessão para sincronizar.');
+
     const semeado = await semearSeServidorVazio(client);
     const recebidos = await puxar(client);
-    const enviados = await empurrar(client);
+    const enviados = await empurrar(client, userId);
     return { recebidos, enviados, semeado };
   } finally {
     rodando = false;
@@ -264,6 +324,18 @@ export async function pendencias() {
 export async function limparCopiaLocal() {
   for (const store of db.SYNCED_STORES) await db.clearStore(store);
   await db.clearStore('outbox');
-  await db.setMeta(CHAVE_ULTIMO_PULL, INICIO_DOS_TEMPOS);
-  await db.setMeta(CHAVE_SEMEADO, false);
+
+  // As preferências também saem. Elas agora pertencem à conta, não ao
+  // aparelho: deixar o endereço do assistente de quem saiu entregaria a
+  // configuração dele para o próximo a entrar no mesmo computador. Voltam
+  // sozinhas na primeira sincronização de quem logar.
+  for (const { key } of await db.getAll('meta')) {
+    // `remove` e não `setMeta(key, undefined)`: o segundo deixaria a chave
+    // existindo com valor vazio, e `state.settings` passaria a ter campos
+    // que respondem `undefined` em vez de simplesmente não existirem.
+    if (db.configuracaoSincroniza(key)) await db.remove('meta', key);
+  }
+
+  await db.setMeta(CHAVE_ULTIMO_PULL, INICIO_DOS_TEMPOS, { silent: true });
+  await db.setMeta(CHAVE_SEMEADO, false, { silent: true });
 }

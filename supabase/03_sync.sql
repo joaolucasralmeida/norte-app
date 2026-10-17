@@ -96,3 +96,17 @@ where table_schema = 'public'
 group by table_name
 order by table_name;
 -- Todas precisam vir com colunas_de_sync = 2.
+
+-- -----------------------------------------------------------------------------
+-- Preferências (acrescentado quando as configurações passaram a sincronizar)
+-- -----------------------------------------------------------------------------
+-- `settings` tinha `updated_at` com default, mas nada o atualizava num UPDATE.
+-- Sem o gatilho, trocar o endereço do servidor no celular gravava o valor novo
+-- com o carimbo antigo — e o computador, que pergunta "o que mudou desde a
+-- última vez?", nunca via a alteração.
+drop trigger if exists touch_settings on public.settings;
+create trigger touch_settings
+  before update on public.settings
+  for each row execute function public.touch_updated_at();
+
+create index if not exists settings_sync_idx on public.settings (user_id, updated_at desc);
