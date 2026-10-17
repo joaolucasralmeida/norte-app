@@ -19,6 +19,7 @@ import { state, setSetting } from '../store.js';
 import { ASSISTANT_URL } from '../cloud/config.js';
 import { money, parseMoney, safeURL } from '../format.js';
 import { el, card, openSheet, closeSheet, toast, field, input } from '../ui.js';
+import { criarRolagem } from '../chat-scroll.js';
 import { openGoalSheet } from './goals.js';
 import { monthSummary, contributedCents, remainingCents } from '../domain.js';
 import { contributionsOf } from '../store.js';
@@ -26,15 +27,95 @@ import { todayISO, monthKey } from '../format.js';
 
 const messages = [];
 
+/**
+ * Qual elemento desenha cada mensagem.
+ *
+ * Existe para a conversa ser atualizada por partes. Antes, cada pedaço de
+ * texto que chegava redesenhava a lista inteira — o que apagava a seleção
+ * de texto do leitor, perdia a posição da rolagem e ficava mais lento a
+ * cada mensagem acumulada.
+ */
+const nos = new Map();
+
+let rolagem = null;
+let ultimaAncora = null;
+
 export function openChat() {
   const body = el('div', { class: 'chat' });
   const log = el('div', { class: 'chat-log' });
+  const espacador = el('div', { class: 'chat-espacador', 'aria-hidden': 'true' });
+  const viewport = el('div', {
+    class: 'chat-viewport',
+    role: 'log',
+    'aria-label': 'Conversa com o assistente',
+    'aria-relevant': 'additions',
+    tabindex: '0',
+  }, [log, espacador]);
+
+  const irParaOFim = el('button', {
+    class: 'chat-jump',
+    hidden: true,
+    onClick: () => rolagem.irParaOFim(),
+  }, 'Resposta chegando ↓');
+
   const composer = buildComposer(log);
 
-  body.append(log, composer);
-  renderLog(log);
+  body.append(barraDeFerramentas(log), el('div', { class: 'chat-area' }, [viewport, irParaOFim]), composer);
 
+  nos.clear();
+  rolagem = criarRolagem(viewport, espacador);
+  rolagem.quandoMudar((temConteudoAbaixo) => { irParaOFim.hidden = !temConteudoAbaixo; });
+
+  renderLog(log);
   openSheet({ title: 'Assistente', body, hideConfirm: true });
+
+  // A folha abre com altura animada; medir antes disso daria um espaçador
+  // calculado para uma tela que ainda não existe.
+  requestAnimationFrame(() => rolagem.irParaOFim());
+}
+
+/**
+ * Apagar a conversa, com confirmacao no proprio botao.
+ *
+ * Nao da para usar a folha de confirmacao do app: ela e a MESMA folha onde
+ * o chat esta aberto, entao confirmar fechava o chat junto. Em vez de
+ * empilhar modais, o botao arma e desarma sozinho.
+ */
+function barraDeFerramentas(log) {
+  let armado = false;
+  let desarmar = null;
+
+  const limpar = el('button', { class: 'btn mini-btn danger' }, 'Apagar conversa');
+
+  const voltarAoNormal = () => {
+    armado = false;
+    clearTimeout(desarmar);
+    limpar.textContent = 'Apagar conversa';
+    limpar.classList.remove('armado');
+  };
+
+  limpar.addEventListener('click', () => {
+    if (messages.length === 0) return;
+
+    if (!armado) {
+      armado = true;
+      limpar.textContent = 'Apagar mesmo?';
+      limpar.classList.add('armado');
+      // Desarma sozinho: um botao que fica armado para sempre vira uma
+      // armadilha para o toque seguinte.
+      desarmar = setTimeout(voltarAoNormal, 4000);
+      return;
+    }
+
+    messages.length = 0;
+    nos.clear();
+    renderLog(log);
+    rolagem.irParaOFim();
+    voltarAoNormal();
+    toast('Conversa apagada.');
+  });
+
+  return el('div', { class: 'chat-barra' }, [limpar]);
 }
 
 /**
@@ -66,11 +147,11 @@ function buildComposer(log) {
   ]);
 }
 
+/** Desenho completo. Só na abertura e depois de apagar a conversa. */
 function renderLog(log) {
   log.replaceChildren();
-
-  // A tela de "assistente não configurado" saiu junto com a configuração.
-  // Ela só apareceria agora se alguém apagasse ASSISTANT_URL do código.
+  nos.clear();
+  ultimaAncora = null;
 
   if (messages.length === 0) {
     log.append(el('p', { class: 'caption center' },
@@ -78,8 +159,30 @@ function renderLog(log) {
     return;
   }
 
-  for (const message of messages) log.append(bubbleFor(message, log));
-  log.scrollTop = log.scrollHeight;
+  for (const message of messages) anexar(log, message);
+}
+
+/** Acrescenta uma linha ao fim, sem tocar nas que já estão desenhadas. */
+function anexar(log, message) {
+  // A dica de boas-vindas sai quando a primeira mensagem chega.
+  log.querySelector('.caption.center')?.remove();
+
+  const node = bubbleFor(message, log);
+  nos.set(message, node);
+  log.append(node);
+
+  // A pergunta do usuário é a âncora da vez: é dela que a resposta desce.
+  if (message.type === 'text' && message.role === 'user') ultimaAncora = node;
+  return node;
+}
+
+/** Redesenha uma linha só — usado quando uma proposta é aceita ou recusada. */
+function atualizar(log, message) {
+  const antigo = nos.get(message);
+  if (!antigo) return;
+  const novo = bubbleFor(message, log);
+  nos.set(message, novo);
+  antigo.replaceWith(novo);
 }
 
 function bubbleFor(message, log) {
@@ -155,7 +258,7 @@ function proposalCard(message, log) {
         class: 'btn primary',
         onClick: () => {
           message.status = 'accepted';
-          renderLog(log);
+          atualizar(log, message);
           closeSheet();
           openGoalSheet(null, {
             title: prefill.title,
@@ -170,21 +273,23 @@ function proposalCard(message, log) {
 
       el('button', {
         class: 'btn',
-        onClick: () => { message.status = 'declined'; renderLog(log); },
+        onClick: () => { message.status = 'declined'; atualizar(log, message); },
       }, 'Não'),
 
       el('button', {
         class: 'btn',
         onClick: () => {
           const links = message.sources?.links ?? [];
-          messages.push(links.length
+          const detalhe = links.length
             ? { type: 'sources', payload: message.sources }
             : {
                 type: 'text', role: 'assistant',
                 text: 'Este valor não veio de uma pesquisa — foi o que você informou. '
                   + 'Você pode ajustá-lo no formulário da meta.',
-              });
-          renderLog(log);
+              };
+          messages.push(detalhe);
+          anexar(log, detalhe);
+          rolagem.acompanhar(ultimaAncora);
         },
       }, 'Mais detalhes'),
     ]),
@@ -203,9 +308,13 @@ async function ask(text, log) {
   const base = backendURL();
   if (!base) return;
 
-  messages.push({ type: 'text', role: 'user', text });
+  const pergunta = { type: 'text', role: 'user', text };
+  messages.push(pergunta);
   const assistant = { type: 'text', role: 'assistant', text: '' };
-  renderLog(log);
+
+  // A pergunta sobe para perto do topo, e a resposta cresce no espaço
+  // aberto abaixo dela em vez de empurrar a conversa para cima.
+  rolagem.ancorar(anexar(log, pergunta));
 
   const history = messages
     .filter((m) => m.type === 'text')
@@ -265,36 +374,48 @@ async function ask(text, log) {
             if (at >= 0) messages.splice(at, 1);
             pending = null;
           }
-          if (!messages.includes(assistant)) messages.push(assistant);
+          if (!messages.includes(assistant)) { messages.push(assistant); anexar(log, assistant); }
           assistant.text += data.text ?? '';
-          renderLog(log);
+          // Só o texto da bolha muda: nada mais é redesenhado, então a
+          // seleção do leitor e a posição da rolagem sobrevivem.
+          nos.get(assistant).textContent = assistant.text;
+          rolagem.acompanhar(ultimaAncora);
         } else if (currentEvent === 'tool_started') {
           // Aviso efêmero: some assim que a resposta começa a chegar, para
           // não deixar "Pesquisando…" parado na tela depois do resultado.
           pending = { type: 'status', text: data.label ?? 'Trabalhando…' };
           messages.push(pending);
-          renderLog(log);
+          anexar(log, pending);
+          rolagem.acompanhar(ultimaAncora);
         } else if (currentEvent === 'sources') {
           lastSources = data;
-          messages.push({ type: 'sources', payload: data });
-          renderLog(log);
+          const fontes = { type: 'sources', payload: data };
+          messages.push(fontes);
+          anexar(log, fontes);
+          rolagem.acompanhar(ultimaAncora);
         } else if (currentEvent === 'proposal') {
-          messages.push({ type: 'proposal', payload: data, status: 'pending', sources: lastSources });
-          renderLog(log);
+          const proposta = { type: 'proposal', payload: data, status: 'pending', sources: lastSources };
+          messages.push(proposta);
+          anexar(log, proposta);
+          rolagem.acompanhar(ultimaAncora);
         } else if (currentEvent === 'error') {
-          messages.push({ type: 'error', text: data.message ?? 'Algo deu errado.' });
-          renderLog(log);
+          const falha = { type: 'error', text: data.message ?? 'Algo deu errado.' };
+          messages.push(falha);
+          anexar(log, falha);
+          rolagem.acompanhar(ultimaAncora);
         }
       }
     }
   } catch (error) {
-    messages.push({
+    const falha = {
       type: 'error',
       text: navigator.onLine
         ? `Não consegui falar com o assistente. ${error.message}`
         : 'Você está sem conexão. O assistente volta quando a internet voltar.',
-    });
-    renderLog(log);
+    };
+    messages.push(falha);
+    anexar(log, falha);
+    rolagem.acompanhar(ultimaAncora);
   }
 }
 

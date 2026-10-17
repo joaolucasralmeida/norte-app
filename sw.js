@@ -17,7 +17,7 @@
 
 // Incremente a cada publicação: é o que descarta o cache antigo nos
 // aparelhos que já instalaram o app.
-const VERSION = 'norte-v23';
+const VERSION = 'norte-v24';
 
 const SHELL = [
   './',
@@ -30,6 +30,7 @@ const SHELL = [
   './js/store.js',
   './js/domain.js',
   './js/chart.js',
+  './js/chat-scroll.js',
   './js/format.js',
   './js/ics.js',
   './js/google-calendar.js',
