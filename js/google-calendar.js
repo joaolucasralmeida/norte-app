@@ -130,6 +130,12 @@ function describeError(code) {
     case 'consent_required':
     case 'interaction_required':
       return 'O Google pediu uma nova autorização.';
+    case 'org_internal':
+      // Tela de consentimento marcada como "Interna": so aceita contas da
+      // mesma organizacao Workspace. Com Gmail pessoal, nunca passa.
+      return 'A tela de consentimento deste Client ID esta como "Interna", que so aceita '
+        + 'contas da mesma organizacao. No Google Cloud Console, em Tela de permissao OAuth, '
+        + 'troque o tipo para "Externo" e adicione seu e-mail como usuario de teste.';
     case 'invalid_client':
     case 'idpiframe_initialization_failed':
       // O Google responde "no registered origin". A causa é sempre a mesma:
