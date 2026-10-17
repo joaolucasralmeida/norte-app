@@ -130,6 +130,15 @@ function describeError(code) {
     case 'consent_required':
     case 'interaction_required':
       return 'O Google pediu uma nova autorização.';
+    case 'invalid_client':
+    case 'idpiframe_initialization_failed':
+      // O Google responde "no registered origin". A causa é sempre a mesma:
+      // o Client ID nao lista o endereco deste app nas origens autorizadas.
+      // Repassar o codigo cru deixaria a pessoa procurando no lugar errado.
+      return 'Esse Client ID nao autoriza o endereco deste app. No Google Cloud Console, '
+        + 'abra Credenciais > o seu ID OAuth (tipo "Aplicativo da Web") e acrescente '
+        + 'https://joaolucasralmeida.github.io em "Origens JavaScript autorizadas". '
+        + 'Sem caminho e sem barra no final.';
     default:
       return `O Google recusou a autorização (${code}).`;
   }
