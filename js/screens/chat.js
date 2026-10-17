@@ -372,6 +372,11 @@ async function ask(text, log) {
           if (pending) {
             const at = messages.indexOf(pending);
             if (at >= 0) messages.splice(at, 1);
+            // Tirar da lista nao basta mais: sem o redesenho completo, o
+            // aviso "Pesquisando na web..." continuaria na tela depois de a
+            // resposta ja ter chegado.
+            nos.get(pending)?.remove();
+            nos.delete(pending);
             pending = null;
           }
           if (!messages.includes(assistant)) { messages.push(assistant); anexar(log, assistant); }
