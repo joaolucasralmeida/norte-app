@@ -6,7 +6,7 @@
  * basta um editor de texto — nada precisa estar instalado no seu PC.
  */
 
-import { load, subscribe, state } from './store.js';
+import { load, subscribe, state, definirPerfil } from './store.js';
 import { el, clear, initSheet, toast } from './ui.js';
 import { cloudConfigured } from './cloud/config.js';
 import { currentSession, onAuthChange } from './cloud/client.js';
@@ -121,11 +121,29 @@ function mostrarEntrada(modo) {
   clear(screen).append(renderAuth({ modo, onEntrou: iniciarSessao }));
 }
 
+/**
+ * Lê quem está conectado da propria sessao.
+ *
+ * O nome vem no token, entao nao custa consulta ao banco. O e-mail serve
+ * de reserva: quem foi convidado sem nome preenchido ainda precisa se
+ * reconhecer na tela.
+ */
+async function carregarPerfil() {
+  if (!cloudConfigured()) return;
+  const sessao = await currentSession();
+  const usuario = sessao?.user;
+  if (!usuario) return;
+
+  const nome = (usuario.user_metadata?.full_name ?? '').trim();
+  definirPerfil({ nome: nome || usuario.email, email: usuario.email });
+}
+
 /** Depois de entrar: carrega os dados, sincroniza e entrega o app. */
 async function iniciarSessao() {
   document.body.classList.remove('deslogado');
   history.replaceState(null, '', location.pathname + location.search + '#/inicio');
 
+  await carregarPerfil();
   await load();
   subscribe(() => render());
   render();
@@ -181,6 +199,7 @@ async function boot() {
       return;
     }
     onAuthChange((evento) => { if (evento === 'SIGNED_OUT') location.reload(); });
+    await carregarPerfil();
   }
 
   try {

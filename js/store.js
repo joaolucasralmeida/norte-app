@@ -25,9 +25,22 @@ export const state = {
   quotes: [],
   settings: {},
   storage: { supported: false, persisted: false },
+
+  /**
+   * Quem esta conectado. Vem da sessao, nao do banco: o nome ja viaja
+   * dentro do token, entao mostrar quem esta logado nao custa uma consulta.
+   * Fica nulo quando o app roda sem sincronizacao.
+   */
+  perfil: null,
 };
 
 const listeners = new Set();
+
+/** Guarda quem esta conectado, para as telas poderem mostrar. */
+export function definirPerfil(perfil) {
+  state.perfil = perfil;
+  emit();
+}
 
 export function subscribe(listener) {
   listeners.add(listener);

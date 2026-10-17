@@ -603,3 +603,19 @@ body.deslogado #screen-title { visibility: hidden; }
   background: color-mix(in srgb, var(--negative) 18%, transparent);
   border-color: color-mix(in srgb, var(--negative) 45%, transparent);
 }
+
+/* ---------------------------------------------------- quem está conectado */
+/* É um botão porque leva às Configurações, onde se troca de conta. Parece
+   uma linha de texto: o destaque da tela é o saldo, não quem está logado. */
+.saudacao {
+  display: flex; align-items: center; gap: 10px;
+  width: 100%; padding: 2px 2px 0; border: 0;
+  background: none; color: inherit; font: inherit; text-align: left; cursor: pointer;
+}
+.saudacao-inicial {
+  flex: none; width: 32px; height: 32px; border-radius: 50%;
+  display: grid; place-items: center;
+  background: var(--accent); color: #fff; font-weight: 600; font-size: 14px;
+}
+.saudacao-texto { display: flex; flex-direction: column; line-height: 1.15; min-width: 0; }
+.saudacao-texto strong { font-size: 15px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

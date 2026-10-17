@@ -15,6 +15,7 @@ export function renderDashboard() {
   const screen = el('div', { class: 'stack' });
 
   screen.append(
+    saudacao(),
     balanceCard(),
     accountsStrip(),
     monthCard(summary, month),
@@ -24,6 +25,36 @@ export function renderDashboard() {
   );
 
   return screen;
+}
+
+/**
+ * Quem esta conectado.
+ *
+ * Devolve nada quando o app roda sem conta — nesse caso nao ha "outro
+ * usuario" possivel, e a linha seria so ruido.
+ *
+ * O primeiro nome basta: e a sua propria tela, o sobrenome nao acrescenta
+ * informacao e rouba espaco numa largura de celular.
+ */
+function saudacao() {
+  const perfil = state.perfil;
+  if (!perfil?.nome) return null;
+
+  const primeiro = perfil.nome.includes('@')
+    ? perfil.nome              // sem nome preenchido, sobra o e-mail inteiro
+    : perfil.nome.trim().split(/\s+/)[0];
+
+  return el('button', {
+    class: 'saudacao',
+    title: perfil.email ?? '',
+    onClick: () => navigate('configuracoes'),
+  }, [
+    el('span', { class: 'saudacao-inicial', 'aria-hidden': 'true' }, primeiro.slice(0, 1).toUpperCase()),
+    el('span', { class: 'saudacao-texto' }, [
+      el('span', { class: 'caption' }, 'Conectado como'),
+      el('strong', {}, primeiro),
+    ]),
+  ]);
 }
 
 function balanceCard() {
