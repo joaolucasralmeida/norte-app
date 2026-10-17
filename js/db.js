@@ -38,10 +38,14 @@ export const STORES = [
 /**
  * Coleções que sobem para o Supabase.
  *
- * Ficam de fora: `externalEvents` (espelho de uma agenda de terceiros, que se
- * refaz sozinho a cada sincronização), `quotes` (resquício da busca de preços
- * antiga, hoje sem uso), `meta` (preferências, que sobem por outro caminho) e
- * `outbox` (a própria fila).
+ * Ficam de fora: `quotes` (resquício da busca de preços antiga, hoje sem
+ * uso), `meta` (preferências, que sobem por outro caminho) e `outbox` (a
+ * própria fila).
+ *
+ * `externalEvents` entrou depois. Ele é espelho de uma agenda de terceiros,
+ * e por isso tinha ficado de fora; o que torna o compartilhamento correto é
+ * a exclusão viajar junto, senão um compromisso cancelado no Google
+ * ressuscitaria vindo do outro aparelho.
  */
 export const SYNCED_STORES = [
   'accounts',
@@ -52,6 +56,7 @@ export const SYNCED_STORES = [
   'contributions',
   'notes',
   'events',
+  'externalEvents',
 ];
 
 let dbPromise = null;
@@ -289,12 +294,11 @@ export async function getMeta(key, fallback = null) {
  *   Sincronizá-las faria um aparelho herdar o marcador do outro e pular
  *   tudo o que ainda não baixou — perda de dados silenciosa.
  *
- * · `googleSyncedAt` é quando ESTE aparelho importou a agenda do Google. Os
- *   eventos importados também não sincronizam (são espelho de outra fonte),
- *   então compartilhar a data faria o computador achar que já importou algo
- *   que só existe no celular.
+ * `googleSyncedAt` morou nesta lista enquanto os eventos importados eram de
+ * cada aparelho. Agora que eles sincronizam, a data da última importação
+ * descreve o dado compartilhado, não o aparelho — e viaja junto com ele.
  */
-const CONFIGURACOES_LOCAIS = ['googleSyncedAt'];
+const CONFIGURACOES_LOCAIS = [];
 
 export const configuracaoSincroniza = (key) => (
   !String(key).startsWith('sync.') && !CONFIGURACOES_LOCAIS.includes(key)

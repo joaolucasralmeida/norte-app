@@ -439,6 +439,10 @@ export async function deleteEvent(id) {
  * Substituir em vez de mesclar é proposital: se um compromisso foi apagado
  * ou movido na agenda de origem, mesclar o deixaria preso aqui para sempre.
  * A origem manda — este app só espelha.
+ *
+ * As exclusões entram na fila de sincronização como qualquer outra, então a
+ * substituição chega aos outros aparelhos. Sem isso, o que foi cancelado no
+ * Google voltaria na sincronização seguinte, reenviado por quem não soube.
  */
 export async function replaceExternalEvents(source, events) {
   const antigos = state.externalEvents.filter((e) => e.source === source).map((e) => e.id);
@@ -501,8 +505,8 @@ export async function wipeEverything() {
     await db.removeMany(store, ids);
   }
 
-  // Estes não sincronizam: some localmente e pronto.
-  for (const store of ['externalEvents', 'quotes']) await db.clearStore(store);
+  // `quotes` nunca sincronizou: resquício da busca de preços antiga.
+  await db.clearStore('quotes');
 
   for (const key of ['accounts', 'categories', 'transactions', 'plans', 'goals',
                      'contributions', 'notes', 'events', 'externalEvents', 'quotes']) {

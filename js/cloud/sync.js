@@ -46,10 +46,12 @@ const TABELAS = [
   ['contributions', ['id', 'goalId', 'amountCents', 'date', 'note', 'transactionId', 'createdAt']],
   ['notes', ['id', 'title', 'body', 'tags', 'createdAt', 'updatedAt']],
   ['events', ['id', 'title', 'date', 'time', 'notes', 'reminderMinutes', 'createdAt']],
+  ['externalEvents', ['id', 'source', 'title', 'date', 'time', 'notes', 'syncedAt']],
 ];
 
-/** Nome da tabela no banco para cada coleção local (hoje são iguais). */
-const tabelaDe = (store) => store;
+/** Nome da tabela no banco para cada coleção local. */
+const NOMES_REMOTOS = { externalEvents: 'external_events' };
+const tabelaDe = (store) => NOMES_REMOTOS[store] ?? store;
 
 /**
  * Campos cuja conversão automática erraria.

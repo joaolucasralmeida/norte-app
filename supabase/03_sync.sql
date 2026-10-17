@@ -110,3 +110,21 @@ create trigger touch_settings
   for each row execute function public.touch_updated_at();
 
 create index if not exists settings_sync_idx on public.settings (user_id, updated_at desc);
+
+-- -----------------------------------------------------------------------------
+-- Agendas importadas (acrescentado quando elas passaram a sincronizar)
+-- -----------------------------------------------------------------------------
+-- Ficaram de fora no inicio por serem espelho de uma fonte externa. O que
+-- torna o compartilhamento correto e o `deleted_at`: a importacao apaga tudo
+-- da origem e regrava, e sem a marcacao de apagado o outro aparelho
+-- reenviaria os eventos antigos — um compromisso cancelado no Google ficaria
+-- preso no Norte para sempre.
+alter table public.external_events add column if not exists updated_at timestamptz not null default now();
+alter table public.external_events add column if not exists deleted_at timestamptz;
+
+create index if not exists external_events_sync_idx on public.external_events (user_id, updated_at desc);
+
+drop trigger if exists touch_external_events on public.external_events;
+create trigger touch_external_events
+  before update on public.external_events
+  for each row execute function public.touch_updated_at();
