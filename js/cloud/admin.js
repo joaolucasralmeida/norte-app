@@ -39,6 +39,8 @@ export async function listarPessoas() {
 
 const MENSAGENS = {
   ja_cadastrado: 'Essa pessoa já tem conta no Norte.',
+  conta_ja_ativa: 'Essa pessoa já definiu uma senha. Ninguém gera acesso a uma conta ativa — '
+    + 'nem um administrador. Ela mesma deve usar "Esqueci minha senha" na tela de entrada.',
   apenas_admin: 'Só um administrador pode convidar.',
   nao_autenticado: 'Sua sessão expirou. Entre de novo.',
   token_invalido: 'Sua sessão expirou. Entre de novo.',

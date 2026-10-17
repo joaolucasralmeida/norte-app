@@ -15,10 +15,10 @@
  *   existe: a partir daí esta porta responde 403.
  *
  * · **Convite normal** — exige um token válido de alguém com papel `admin`.
- *   Se o e-mail já tiver conta, o link gerado é de redefinição de senha em
- *   vez de convite. É assim que alguém que esqueceu a senha volta a entrar
- *   sem depender do e-mail automático do Supabase, que aponta para um
- *   endereço que não existe.
+ *   Se o e-mail já tiver conta mas ela nunca tiver sido ativada, o link é
+ *   reenviado. Se a conta já tiver senha definida, a função recusa: nem um
+ *   administrador gera acesso a uma conta ativa, porque isso seria entrar
+ *   nela e ver extrato, metas e anotações de outra pessoa.
  *
  * Em todos os casos a pessoa escolhe a própria senha ao abrir o link. Senha
  * nenhuma é gerada, transmitida ou armazenada por este código.
@@ -116,6 +116,24 @@ Deno.serve(async (req: Request) => {
   // outra pessoa para receber a chave da conta dela.
   const cadastrados = await admin.auth.admin.listUsers({ page: 1, perPage: 1000 });
   const jaExiste = (cadastrados.data?.users ?? []).some((u) => u.email === email);
+
+  // Conta ja ativa nao recebe link de acesso, nem de admin.
+  //
+  // Sem esta trava, bastava um admin pedir um link de redefinicao para o
+  // e-mail de outra pessoa para entrar na conta dela e ver tudo: extrato,
+  // metas, anotacoes. Reenviar convite para quem ainda nao definiu senha
+  // continua valendo — ali nao ha nada para ver.
+  if (jaExiste) {
+    const { data: ativada } = await admin.rpc('conta_ativada', { p_email: email });
+    if (ativada) {
+      return json({
+        erro: 'conta_ja_ativa',
+        detalhe: 'Essa pessoa ja definiu uma senha. Por seguranca, ninguem pode gerar '
+          + 'acesso a uma conta ativa — nem um administrador. Ela mesma deve usar '
+          + '"Esqueci minha senha" na tela de entrada.',
+      }, 409);
+    }
+  }
 
   const tipo: 'invite' | 'recovery' = jaExiste ? 'recovery' : 'invite';
 
