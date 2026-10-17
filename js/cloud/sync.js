@@ -275,6 +275,34 @@ async function semearSeServidorVazio(client) {
   return true;
 }
 
+/**
+ * Sobe as preferências que já existiam antes de elas passarem a sincronizar.
+ *
+ * `semearSeServidorVazio` roda uma vez e só; quem já tinha usado o app antes
+ * desta mudança já tinha passado por lá, com o servidor cheio de lançamentos
+ * e vazio de configurações. Sem este empurrão, o endereço do assistente
+ * digitado no celular ficaria preso nele até alguém reescrevê-lo — e a
+ * queixa que originou tudo isto continuaria valendo para quem já usava.
+ *
+ * Roda uma vez por aparelho, controlado pela própria chave.
+ */
+const CHAVE_CONFIGS_SEMEADAS = 'sync.settingsSeeded';
+
+async function semearConfiguracoesExistentes() {
+  if (await db.getMeta(CHAVE_CONFIGS_SEMEADAS, false)) return 0;
+
+  let enfileiradas = 0;
+  for (const { key, value } of await db.getAll('meta')) {
+    if (!db.configuracaoSincroniza(key) || value === undefined) continue;
+    // Regravar com o mesmo valor é o que coloca a chave na fila de envio.
+    await db.setMeta(key, value);
+    enfileiradas += 1;
+  }
+
+  await db.setMeta(CHAVE_CONFIGS_SEMEADAS, true, { silent: true });
+  return enfileiradas;
+}
+
 // ---------------------------------------------------------------------------
 // Entrada pública
 // ---------------------------------------------------------------------------
@@ -301,6 +329,7 @@ export async function sincronizar() {
     if (!userId) throw new Error('Sem sessão para sincronizar.');
 
     const semeado = await semearSeServidorVazio(client);
+    await semearConfiguracoesExistentes();
     const recebidos = await puxar(client);
     const enviados = await empurrar(client, userId);
     return { recebidos, enviados, semeado };
