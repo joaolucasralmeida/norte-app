@@ -4,8 +4,8 @@ import {
 } from '../store.js';
 import { requestToken, listCalendars, fetchAllEvents, hasValidToken, forgetToken } from '../google-calendar.js';
 import { parseICS } from '../ics.js';
-import { storageEstimate } from '../db.js';
-import { exportBackup, importBackup, backupStatus, dataSummary, backupReminderEvent } from '../backup.js';
+
+
 import { shareICS } from '../ics.js';
 import { money, parseMoney, fmtDate } from '../format.js';
 import {
@@ -25,89 +25,12 @@ export function renderSettings() {
 
     accountCard(),
     peopleCard(),
-    backupCard(),
     calendarsCard(),
     accountsCard(),
     assistantCard(),
-    storageCard(),
     aboutCard(),
     dangerCard(),
   ]);
-}
-
-// ---------------------------------------------------------------------------
-
-function backupCard() {
-  const status = backupStatus();
-
-  return card([
-    sectionTitle('Backup'),
-    el('p', { class: `caption ${status.level === 'warn' ? 'negative' : ''}`.trim() }, status.text),
-    el('p', { class: 'caption' }, dataSummary()),
-
-    el('div', { class: 'actions' }, [
-      el('button', {
-        class: 'btn primary grow',
-        onClick: async () => {
-          const result = await exportBackup();
-          if (result?.cancelled) return;
-          toast('Backup gerado. Guarde o arquivo em lugar seguro.');
-          rerender();
-        },
-      }, 'Exportar backup'),
-
-      el('button', { class: 'btn', onClick: openImportSheet }, 'Restaurar'),
-    ]),
-
-    el('p', { class: 'caption tiny' },
-      'O arquivo é um JSON com tudo: lançamentos, metas, aportes, anotações e eventos. ' +
-      'Não tem senha — guarde-o como você guardaria um extrato.'),
-
-    el('hr'),
-
-    el('button', {
-      class: 'btn',
-      onClick: async () => {
-        const result = await shareICS([backupReminderEvent()], 'norte-lembrete-backup.ics');
-        if (result.cancelled) return;
-        toast('Escolha "Calendário" para criar o lembrete semanal.');
-      },
-    }, '🔔 Criar lembrete semanal no Calendário'),
-
-    el('p', { class: 'caption tiny' },
-      'Cria um evento que se repete todo domingo às 20h no app Calendário do iPhone. ' +
-      'Um site não consegue gerar backup sozinho com o app fechado — o iOS não permite —, ' +
-      'então o melhor que dá para fazer é garantir que você seja lembrado.'),
-  ]);
-}
-
-function openImportSheet() {
-  let file = null;
-
-  const body = el('div', { class: 'stack' }, [
-    el('p', {}, 'Restaurar substitui tudo o que está neste aparelho pelo conteúdo do arquivo.'),
-    el('p', { class: 'caption' },
-      'Não dá para mesclar: sem servidor, não há como decidir qual versão de um lançamento é a mais recente, ' +
-      'e o resultado seriam duplicatas no seu extrato. Se tiver dados novos aqui, exporte antes.'),
-    field('Arquivo de backup', input({
-      type: 'file', accept: 'application/json,.json',
-      onChange: (event) => { file = event.target.files?.[0] ?? null; },
-    })),
-  ]);
-
-  openSheet({
-    title: 'Restaurar backup',
-    body,
-    confirmLabel: 'Substituir tudo',
-    onConfirm: async () => {
-      if (!file) throw new Error('Escolha um arquivo primeiro.');
-      const result = await importBackup(file);
-      await load();
-      toast(`Restaurado o backup de ${fmtDate(result.generatedAt)}.`);
-      rerender();
-      return true;
-    },
-  });
 }
 
 // ---------------------------------------------------------------------------
@@ -515,21 +438,14 @@ function peopleCard() {
 }
 
 function assistantCard() {
-  const url = state.settings.backendURL ?? '';
-
+  // O campo "endereço do servidor" saiu: o endereço agora vem do código
+  // (ASSISTANT_URL) e é o mesmo para todos os aparelhos. Ele existia de
+  // quando o servidor ainda não estava publicado e cada um apontava para o
+  // seu — era configuração sem escolha a fazer.
   return card([
     sectionTitle('Assistente de IA'),
     el('p', { class: 'caption' },
-      'Opcional. Sem um servidor configurado, o chat e a busca de preços ficam indisponíveis — ' +
-      'o resto do app funciona normalmente, offline.'),
-
-    field('Endereço do servidor', input({
-      type: 'url', value: url, placeholder: 'https://…',
-      onChange: async (event) => {
-        await setSetting('backendURL', event.target.value.trim());
-        toast('Servidor salvo.');
-      },
-    }), 'O Worker em gemini-worker/ deste projeto, publicado no Cloudflare.'),
+      'Já configurado. Pergunte um preço no botão ✦ e ele prepara uma meta de compra.'),
 
     toggle('Enviar resumo financeiro ao assistente',
       Boolean(state.settings.sendSnapshot),
@@ -549,27 +465,6 @@ function assistantCard() {
 }
 
 // ---------------------------------------------------------------------------
-
-function storageCard() {
-  const node = card([
-    sectionTitle('Armazenamento'),
-    el('p', { class: 'caption' },
-      state.storage.persisted
-        ? '✓ O navegador marcou seus dados como persistentes.'
-        : 'O navegador não garantiu persistência. É o comportamento normal no iOS — por isso o backup importa.'),
-    el('p', { class: 'caption', id: 'storage-usage' }, 'Calculando uso…'),
-  ]);
-
-  storageEstimate().then((estimate) => {
-    const target = document.getElementById('storage-usage');
-    if (!target) return;
-    target.textContent = estimate
-      ? `Usando ${formatBytes(estimate.usage)} de aproximadamente ${formatBytes(estimate.quota)} disponíveis.`
-      : 'Este navegador não informa o uso de armazenamento.';
-  });
-
-  return node;
-}
 
 function formatBytes(bytes) {
   if (!bytes) return '0 KB';
@@ -592,13 +487,15 @@ function dangerCard() {
   return card([
     sectionTitle('Apagar tudo'),
     el('p', { class: 'caption' },
-      'Remove lançamentos, metas, aportes, anotações e eventos deste aparelho. Não dá para desfazer.'),
+      'Remove lançamentos, metas, aportes, anotações e eventos — neste aparelho E no servidor, '
+      + 'em todos os aparelhos onde você entra com esta conta. Não dá para desfazer.'),
     el('button', {
       class: 'btn danger',
       onClick: async () => {
         const ok = await confirmAction({
           title: 'Apagar todos os dados?',
-          message: 'Exporte um backup antes se quiser poder voltar. Esta ação não tem desfazer.',
+          message: 'Isso apaga também o que está no servidor, e some dos outros aparelhos na '
+            + 'próxima sincronização. Não tem desfazer.',
           confirmLabel: 'Apagar tudo', destructive: true,
         });
         if (!ok) return;

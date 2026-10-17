@@ -225,11 +225,22 @@ async function empurrar(client, userId) {
     if (exclusoes.length) {
       // Exclusão é marcação, não remoção. Apagar de verdade faria o registro
       // voltar: o outro aparelho, que nunca soube da exclusão, reenviaria.
+      const idsExcluidos = exclusoes.map((i) => i.id);
       const { error } = await client
         .from(tabelaDe(store))
         .update({ deleted_at: new Date().toISOString() })
-        .in('id', exclusoes.map((i) => i.id));
+        .in('id', idsExcluidos);
       if (error) throw new Error(`Falha ao excluir em ${store}: ${error.message}`);
+
+      // Apaga de novo aqui, e não é redundância.
+      //
+      // A rodada puxa antes de empurrar — de propósito, para uma alteração
+      // remota mais recente não ser atropelada. O efeito colateral é que o
+      // puxar desta mesma rodada traz de volta o registro que acabamos de
+      // apagar, porque no servidor ele ainda estava vivo. Sem esta linha,
+      // o lançamento reaparece na tela e só some na sincronização seguinte.
+      await db.removeMany(store, idsExcluidos, { silent: true });
+
       concluidos.push(...exclusoes.map((i) => i.key));
     }
   }

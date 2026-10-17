@@ -5,7 +5,6 @@ import {
 import { money, signedMoney, fmtMonth, fmtDate, monthKey, todayISO } from '../format.js';
 import { el, card, sectionTitle, emptyState, toast } from '../ui.js';
 import { donutChart } from '../chart.js';
-import { backupStatus, exportBackup } from '../backup.js';
 import { navigate } from '../app.js';
 import { openTransactionSheet } from './finance.js';
 import { openChat } from './chat.js';
@@ -14,9 +13,6 @@ export function renderDashboard() {
   const month = monthKey(todayISO());
   const summary = monthSummary(state.transactions, month);
   const screen = el('div', { class: 'stack' });
-
-  const backup = backupStatus();
-  if (backup.level === 'warn') screen.append(backupBanner(backup));
 
   screen.append(
     balanceCard(),
@@ -28,26 +24,6 @@ export function renderDashboard() {
   );
 
   return screen;
-}
-
-// ---------------------------------------------------------------------------
-
-function backupBanner(backup) {
-  // Leva direto à exportação, não às Configurações: quanto menos toques
-  // entre o aviso e o arquivo salvo, mais gente faz o backup.
-  return el('button', {
-    class: 'banner warn',
-    onClick: async () => {
-      const result = await exportBackup();
-      if (result?.cancelled) return;
-      toast('Backup gerado. Salve em Arquivos ou mande para você mesmo.');
-      window.dispatchEvent(new CustomEvent('norte:rerender'));
-    },
-  }, [
-    el('strong', {}, '⚠ Faça um backup'),
-    el('span', {}, `${backup.text} Seus dados ficam só neste aparelho — se você apagar o ícone ou limpar os dados do Safari, eles somem.`),
-    el('span', { class: 'banner-cta' }, 'Exportar agora ›'),
-  ]);
 }
 
 function balanceCard() {

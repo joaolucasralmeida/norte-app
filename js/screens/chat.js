@@ -16,6 +16,7 @@
  */
 
 import { state, setSetting } from '../store.js';
+import { ASSISTANT_URL } from '../cloud/config.js';
 import { money, parseMoney, safeURL } from '../format.js';
 import { el, card, openSheet, closeSheet, toast, field, input } from '../ui.js';
 import { openGoalSheet } from './goals.js';
@@ -36,8 +37,13 @@ export function openChat() {
   openSheet({ title: 'Assistente', body, hideConfirm: true });
 }
 
+/**
+ * O endereço vem do código. A configuração continua sendo lida, mas só como
+ * exceção: quem quiser apontar para um servidor próprio ainda pode, gravando
+ * `backendURL`. Ninguém precisa — e ninguém mais vê o campo.
+ */
 function backendURL() {
-  const raw = (state.settings.backendURL ?? '').trim();
+  const raw = (state.settings.backendURL ?? '').trim() || ASSISTANT_URL;
   return raw ? raw.replace(/\/+$/, '') : null;
 }
 
@@ -63,17 +69,8 @@ function buildComposer(log) {
 function renderLog(log) {
   log.replaceChildren();
 
-  if (!backendURL()) {
-    log.append(card([
-      el('strong', {}, 'Assistente não configurado'),
-      el('p', { class: 'caption' },
-        'O chat precisa do servidor deste projeto publicado em algum lugar com https. ' +
-        'Configure o endereço em Configurações › Assistente de IA.'),
-      el('p', { class: 'caption tiny' },
-        'Sem isso, todo o resto do app funciona normalmente e sem internet.'),
-    ]));
-    return;
-  }
+  // A tela de "assistente não configurado" saiu junto com a configuração.
+  // Ela só apareceria agora se alguém apagasse ASSISTANT_URL do código.
 
   if (messages.length === 0) {
     log.append(el('p', { class: 'caption center' },

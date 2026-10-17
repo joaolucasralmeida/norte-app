@@ -471,13 +471,31 @@ function upsert(collection, record) {
   else collection.push(record);
 }
 
+/**
+ * Apaga tudo — no aparelho E no servidor.
+ *
+ * Limpar só o IndexedDB virou mentira quando os dados passaram a morar no
+ * Supabase: na sincronização seguinte tudo voltaria. Pior do que não apagar
+ * é dizer que apagou.
+ *
+ * A exclusão vai registro a registro, pela mesma fila que o resto usa, para
+ * que a marcação de apagado chegue também aos outros aparelhos. Um
+ * `clearAll` direto no banco local não deixaria rastro nenhum para enviar.
+ */
 export async function wipeEverything() {
-  await db.clearAll();
+  for (const store of db.SYNCED_STORES) {
+    const ids = (await db.getAll(store)).map((r) => r.id);
+    await db.removeMany(store, ids);
+  }
+
+  // Estes não sincronizam: some localmente e pronto.
+  for (const store of ['externalEvents', 'quotes']) await db.clearStore(store);
+
   for (const key of ['accounts', 'categories', 'transactions', 'plans', 'goals',
                      'contributions', 'notes', 'events', 'externalEvents', 'quotes']) {
     state[key] = [];
   }
-  state.settings = {};
+
   await seedDefaults();
   emit();
 }

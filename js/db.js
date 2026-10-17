@@ -5,11 +5,11 @@
  * interface), limitado a ~5 MB e guarda só string. IndexedDB guarda objetos,
  * é assíncrono e tem cota bem maior.
  *
- * ⚠ Os dados vivem **só neste aparelho e neste navegador**. A Apple afirma
- * que o apagamento automático de 7 dias não vale para web apps na tela de
- * início, mas há relatos de desenvolvedores em contrário e nenhuma garantia
- * documentada. Por isso: `navigator.storage.persist()` no boot, e o backup
- * é tratado como funcionalidade central, não como extra (ver backup.js).
+ * Desde que o app passou a sincronizar com o Supabase, isto aqui é **cópia**,
+ * não o original: o IndexedDB serve para o app abrir e funcionar sem rede. Se
+ * o navegador descartar estes dados — e no iOS isso acontece —, eles voltam
+ * do servidor no próximo login. Era por causa desse risco que o backup em
+ * arquivo existia; ele saiu quando deixou de ser a única rede de proteção.
  */
 
 const DB_NAME = 'norte';
