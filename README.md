@@ -4,6 +4,12 @@ App de finanças pessoais que roda no navegador e instala na tela de início do 
 
 **Contas e lançamentos · compras parceladas · metas de compra com aportes · diário · calendário · assistente de IA**
 
+**[Abrir o app →](https://joaolucasralmeida.github.io/norte-app/)**
+
+![Telas do Norte: início, financeiro, metas e calendário](docs/telas.png)
+
+<sub>Telas com dados de exemplo.</sub>
+
 Funciona **offline**, com os dados no próprio aparelho. Quem quiser pode entrar
 com uma conta e sincronizar entre aparelhos (Supabase, com isolamento total
 entre contas por RLS).

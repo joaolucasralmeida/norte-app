@@ -14,7 +14,9 @@ export function renderDashboard() {
   const summary = monthSummary(state.transactions, month);
   const screen = el('div', { class: 'stack' });
 
-  screen.append(
+  // `append` escreve "null" na tela para o que vier nulo — a saudação, por
+  // exemplo, não existe quando o app roda sem conta. Por isso o filtro.
+  screen.append(...[
     saudacao(),
     balanceCard(),
     accountsStrip(),
@@ -22,7 +24,7 @@ export function renderDashboard() {
     categoriesCard(month),
     shortcuts(),
     nextDueCard(),
-  );
+  ].filter(Boolean));
 
   return screen;
 }
