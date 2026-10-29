@@ -45,7 +45,7 @@ Conferi: está **ligado** (`disable_signup: false`). Qualquer pessoa na internet
 
 Ninguém vê dado de ninguém, nem o admin. O papel controla **administração**, não acesso a dados.
 
-`joaolucasralmeida@icloud.com` é admin. Foi criado pela janela de primeiro acesso da função `convidar`, que se fecha sozinha e para sempre assim que existe um usuário — já está fechada (responde 403).
+A conta do dono é admin. Foi criado pela janela de primeiro acesso da função `convidar`, que se fecha sozinha e para sempre assim que existe um usuário — já está fechada (responde 403).
 
 ---
 
