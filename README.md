@@ -48,6 +48,10 @@ Chat para pesquisar preços antes de uma compra. Roda num Cloudflare Worker
 que faz o **loop de chamada de ferramentas com o Gemini** e busca na web pela
 Tavily. A resposta chega por streaming (SSE), com as fontes citadas.
 
+**O código do agente está em [`gemini-worker/`](gemini-worker/)**, com o que ele
+mostra sobre a API do Gemini (function calling, troca automática de modelo,
+prompt com regras verificáveis) e 10 testes automáticos.
+
 - As chaves do Gemini e da Tavily ficam só no Worker. O app manda apenas a pergunta.
 - O que o modelo devolve é tratado como **não confiável**: links e imagens passam
   por `safeURL`, que só aceita `https:`. Uma página lida pelo modelo poderia
@@ -72,6 +76,7 @@ js/ics.js               geração do arquivo de calendário
 js/cloud/               login, sincronização e convites (Supabase)
 js/screens/chat.js      cliente do assistente de IA (SSE)
 js/screens/             uma tela por arquivo
+gemini-worker/          assistente de IA (Cloudflare Worker + API do Gemini)
 ```
 
 Publicou uma atualização e o app continua antigo? Feche-o na multitarefa e abra de novo, ou incremente `VERSION` em `sw.js`.

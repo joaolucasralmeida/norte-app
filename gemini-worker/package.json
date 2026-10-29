@@ -1,0 +1,10 @@
+{
+  "name": "norte-assistente",
+  "private": true,
+  "type": "module",
+  "description": "Assistente de IA do Norte: Cloudflare Worker com loop de chamada de funções na API do Gemini",
+  "scripts": {
+    "test": "node --test",
+    "deploy": "npx wrangler deploy"
+  }
+}

@@ -1,0 +1,28 @@
+name = "norte-assistente"
+main = "src/index.js"
+compatibility_date = "2026-06-01"
+
+# Sem dependências, sem build: o Worker é JavaScript puro.
+
+[vars]
+# Origens que podem chamar este Worker. Sem isso, qualquer site usaria o
+# servidor como proxy gratuito e queimaria a cota do Gemini.
+ALLOWED_ORIGINS = "https://joaolucasralmeida.github.io"
+
+# Modelo preferido. Deixe vazio para o Worker descobrir sozinho qual a sua
+# chave alcança — o catálogo do Gemini muda com frequência e a lista de
+# fallback em src/gemini.js cobre as trocas.
+GEMINI_MODEL = ""
+
+# Busca de preços na web. "0" desliga sem precisar apagar a chave da Tavily
+# — útil se a cota de 1.000 buscas do mês acabar e você preferir uma recusa
+# clara a um erro por pergunta.
+#
+# A busca só existe se TAVILY_API_KEY estiver configurada; esta variável
+# sozinha não liga nada.
+SEARCH_ENABLED = "1"
+
+# As chaves NÃO vão aqui. São segredos, configurados por fora — pelo painel
+# do Cloudflare (Settings › Variables and Secrets › tipo Secret) ou por:
+#   npx wrangler secret put GEMINI_API_KEY
+#   npx wrangler secret put TAVILY_API_KEY
